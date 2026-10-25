@@ -1,2 +1,2 @@
 DROP TABLE fleets;
-DROP EXTENSION postgis;
+DROP EXTENSION postgis CASCADE;
