@@ -18,6 +18,11 @@ const (
 	ValidationFailed   = "validation_failed"
 	WeakPassword       = "weak_password"
 	RateLimited        = "rate_limited"
+
+	// Registry codes (GF-42).
+	VehicleNotActive = "vehicle_not_active"
+	DeviceRevoked    = "device_revoked"
+	DeviceInUse      = "device_in_use"
 )
 
 // Write sends the envelope with the given status.
