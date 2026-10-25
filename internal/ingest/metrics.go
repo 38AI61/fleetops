@@ -13,6 +13,8 @@ var (
 	failureReasons   = []string{"db", "missing_partition", "timeout", "result_mismatch"}
 	terminateReasons = []string{"max_deliver", "malformed"}
 	maintenanceOps   = []string{"ensure", "retain"}
+	fanoutKinds      = []string{"position_batch", "presence"}
+	presenceStates   = []string{"online", "offline"}
 )
 
 // Metrics is the ingest metric set (GF-93). Counters are incremented from Offer,
@@ -29,6 +31,8 @@ type Metrics struct {
 	PartitionsCreated          prometheus.Counter
 	PartitionsDropped          prometheus.Counter
 	PartitionMaintenanceErrors *prometheus.CounterVec
+	FanoutPublishFailures      *prometheus.CounterVec
+	PresenceTransitions        *prometheus.CounterVec
 }
 
 // NewMetrics builds the GF-93 set and registers it with reg. It panics on a
@@ -76,6 +80,14 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 			Name: "fleetops_ingest_partition_maintenance_errors_total",
 			Help: "Failed partition maintenance passes by op.",
 		}, []string{"op"}),
+		FanoutPublishFailures: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "fleetops_fanout_publish_failures_total",
+			Help: "Failed fanout publishes by kind.",
+		}, []string{"kind"}),
+		PresenceTransitions: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "fleetops_presence_transitions_total",
+			Help: "Presence transitions published by state.",
+		}, []string{"state"}),
 	}
 	for _, v := range outcomeValues {
 		m.MessagesTotal.WithLabelValues(v)
@@ -89,10 +101,17 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 	for _, v := range maintenanceOps {
 		m.PartitionMaintenanceErrors.WithLabelValues(v)
 	}
+	for _, v := range fanoutKinds {
+		m.FanoutPublishFailures.WithLabelValues(v)
+	}
+	for _, v := range presenceStates {
+		m.PresenceTransitions.WithLabelValues(v)
+	}
 	reg.MustRegister(
 		m.MessagesTotal, m.FlushSize, m.FlushDuration, m.FlushFailures,
 		m.MissingPartition, m.Terminated, m.AckErrors,
 		m.PartitionsCreated, m.PartitionsDropped, m.PartitionMaintenanceErrors,
+		m.FanoutPublishFailures, m.PresenceTransitions,
 	)
 	return m
 }
