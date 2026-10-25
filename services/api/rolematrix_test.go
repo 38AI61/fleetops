@@ -3,8 +3,11 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/http"
+	"strings"
 	"testing"
+	"time"
 
 	"fleetops/internal/registry"
 )
@@ -170,4 +173,86 @@ func TestRoleMatrix(t *testing.T) {
 			t.Fatalf("status = %d, want 204", r.status)
 		}
 	})
+}
+
+// TestRoleMatrixIngest is the R-6 row for POST /ingest/position (GF-64). The
+// device route refuses every JWT, so each JWT column and the no-auth column get
+// 401; a valid device key gets 204; a malformed key gets 401.
+func TestRoleMatrixIngest(t *testing.T) {
+	h := startServer(t)
+	fleet := h.fleet(t, "IngestMatrix")
+	tokens := map[string]string{}
+	var adminID int64
+	for _, c := range roleCols {
+		if c.role == "" {
+			continue
+		}
+		email := c.role + "@ingest-matrix.example"
+		id := h.user(t, fleet, email, c.role)
+		if c.role == "admin" {
+			adminID = id
+		}
+		tokens[c.role] = h.login(t, email)
+	}
+	svc := &registry.Service{DB: h.db, Salt: testSalt, Clock: h.clock.now}
+	dev, err := svc.IssueDevice(context.Background(), registry.Actor{UserID: adminID, FleetID: fleet}, registry.KindPWA)
+	if err != nil {
+		t.Fatalf("fixture device: %v", err)
+	}
+	body := fmt.Sprintf(`{"lat":41,"lng":29,"speed":50,"heading":90,"accuracy":8,"ts":%q}`, h.clock.t.Format(time.RFC3339))
+
+	const path = "/ingest/position"
+	for _, c := range roleCols {
+		if c.role == "" {
+			continue
+		}
+		t.Run("POST "+path+"/JWT "+c.name, func(t *testing.T) {
+			r := h.postIngest(t, tokens[c.role], "", body)
+			if r.status != http.StatusUnauthorized || r.errCode(t) != "unauthorized" {
+				t.Fatalf("status = %d (%s), want 401 unauthorized", r.status, r.body)
+			}
+		})
+	}
+	t.Run("POST "+path+"/no auth", func(t *testing.T) {
+		r := h.postIngest(t, "", "", body)
+		if r.status != http.StatusUnauthorized || r.errCode(t) != "unauthorized" {
+			t.Fatalf("status = %d (%s), want 401 unauthorized", r.status, r.body)
+		}
+	})
+	t.Run("POST "+path+"/valid device key", func(t *testing.T) {
+		r := h.postIngest(t, "", dev.APIKey, body)
+		if r.status != http.StatusNoContent {
+			t.Fatalf("status = %d (%s), want 204", r.status, r.body)
+		}
+	})
+	t.Run("POST "+path+"/malformed device key", func(t *testing.T) {
+		r := h.postIngest(t, "", "fo_dev_nope", body)
+		if r.status != http.StatusUnauthorized || r.errCode(t) != "unauthorized" {
+			t.Fatalf("status = %d (%s), want 401 unauthorized", r.status, r.body)
+		}
+	})
+}
+
+// postIngest sends one POST /ingest/position. bearer, when set, goes in
+// Authorization; deviceKey, when set, goes in X-Device-Key.
+func (h *harness) postIngest(t *testing.T, bearer, deviceKey, body string) reply {
+	t.Helper()
+	req, err := http.NewRequest(http.MethodPost, h.url+"/ingest/position", strings.NewReader(body))
+	if err != nil {
+		t.Fatalf("request: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if bearer != "" {
+		req.Header.Set("Authorization", "Bearer "+bearer)
+	}
+	if deviceKey != "" {
+		req.Header.Set("X-Device-Key", deviceKey)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("POST /ingest/position: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	b, _ := io.ReadAll(resp.Body)
+	return reply{status: resp.StatusCode, body: b}
 }
