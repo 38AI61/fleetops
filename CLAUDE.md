@@ -79,3 +79,13 @@ Names from README §12. Values come from the environment or `deploy/.env` (gitig
 - `JWT_SECRET`
 - `DEVICE_KEY_SALT`
 - `POSTGRES_PASSWORD` (read by the postgres service in compose; local-dev default applies if unset)
+
+## Optional tunables
+
+Values come from the environment, like the names above. Unset or empty means the default. `config.Load` refuses an invalid value, and the error names the variable, never the value.
+
+| Variable | Default | Allowed |
+|---|---|---|
+| `FLEETOPS_FLUSH_INTERVAL` | `1s` | Go duration from `100ms` to `10s` |
+| `FLEETOPS_FLUSH_MAX` | `500` | integer from `1` to `5000` |
+| `FLEETOPS_ACCURACY_MAX_M` | `50` | finite number above `0` and at most `10000` |

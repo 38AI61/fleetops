@@ -14,7 +14,7 @@ import (
 )
 
 // TestMigrationRoundTrip is the P1 smoke test extended in P2: up -> down to
-// zero -> up on PostGIS, with migrations 001-006 applied.
+// zero -> up on PostGIS, with migrations 001-007 applied.
 func TestMigrationRoundTrip(t *testing.T) {
 	dsn := testinfra.StartPostgis(t)
 
@@ -38,7 +38,7 @@ func TestMigrationRoundTrip(t *testing.T) {
 		if err := m.Up(); err != nil {
 			t.Fatalf("up: %v", err)
 		}
-		assertVersion(t, m, 6)
+		assertVersion(t, m, 7)
 		assertSchema(t, conn, true)
 	})
 
@@ -56,7 +56,7 @@ func TestMigrationRoundTrip(t *testing.T) {
 		if err := m.Up(); err != nil {
 			t.Fatalf("up again: %v", err)
 		}
-		assertVersion(t, m, 6)
+		assertVersion(t, m, 7)
 		assertSchema(t, conn, true)
 	})
 
@@ -94,6 +94,8 @@ func assertSchema(t *testing.T, conn *sql.DB, present bool) {
 		{"table", "drivers", `SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'drivers')`},
 		{"table", "devices", `SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'devices')`},
 		{"table", "vehicle_pairings", `SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'vehicle_pairings')`},
+		{"table", "positions", `SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'positions')`},
+		{"table", "vehicles_latest", `SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'vehicles_latest')`},
 		{"function", "admin_audit_append_only", `SELECT EXISTS (SELECT 1 FROM pg_proc WHERE proname = 'admin_audit_append_only')`},
 		{"extension", "postgis", `SELECT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'postgis')`},
 		{"extension", "citext", `SELECT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'citext')`},
