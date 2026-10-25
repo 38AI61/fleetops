@@ -1,0 +1,69 @@
+# Local infrastructure for FleetOps (README §12).
+# Skeleton: infrastructure services only. Host ports live in 10000-10019; see deploy/PORTS.md.
+# Usage: docker compose -f deploy/docker-compose.yml up -d
+#
+# TODO(later phases): app services join here — api (8080 -> 10010, local go run),
+# ingest, ws-hub (8090 -> 10011, local go run), minio (9000/9001 -> 10006/10007, phase 3),
+# web (5173 -> 10012) and driver-pwa (5174 -> 10013) run as local Vite dev servers.
+
+services:
+  postgres:
+    image: postgis/postgis:16
+    environment:
+      POSTGRES_USER: fleetops
+      # Local-dev default only. Override via deploy/.env (gitignored), never commit a real secret.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-fleetops-dev}
+      POSTGRES_DB: fleetops
+    ports:
+      - "127.0.0.1:10002:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fleetops -d fleetops"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    image: redis:7
+    ports:
+      - "127.0.0.1:10003:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  nats:
+    # nats:2 ships no shell or HTTP client, so there is no in-container healthcheck yet.
+    # Monitoring endpoint (8222) is intentionally not published.
+    image: nats:2
+    ports:
+      - "127.0.0.1:10004:4222"
+    restart: unless-stopped
+
+  osrm:
+    # Routing data is NOT bundled. Place a small region extract (.osrm files) in the
+    # osrm_data volume before this container can become healthy (README §13: ~200-500 MB extract).
+    image: osrm/osrm-backend
+    command: ["osrm-routed", "--algorithm", "mld", "/data/region.osrm"]
+    ports:
+      - "127.0.0.1:10005:5000"
+    volumes:
+      - osrm_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/5000' || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 30s
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
+  osrm_data:
