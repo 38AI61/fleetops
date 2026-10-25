@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"net/url"
 	"os"
 	"strconv"
 	"time"
@@ -29,6 +30,14 @@ const (
 	minFlushMax      = 1
 	maxFlushMax      = 5000
 	maxAccuracyMaxM  = 10000.0
+
+	DefaultWSRoomCap = 2000
+	minWSRoomCap     = 1
+	maxWSRoomCap     = 10000
+
+	DefaultPresenceTTL = 120 * time.Second
+	minPresenceTTL     = 30 * time.Second
+	maxPresenceTTL     = 600 * time.Second
 )
 
 // Config holds the settings the API and tools need at startup.
@@ -37,13 +46,17 @@ type Config struct {
 	JWTSecret     string
 	DeviceKeySalt string
 	NATSURL       string
+	RedisURL      string
 
 	FlushInterval time.Duration
 	FlushMax      int
 	AccuracyMaxM  float64
+
+	WSRoomCap   int
+	PresenceTTL time.Duration
 }
 
-// Load reads DATABASE_URL, JWT_SECRET, DEVICE_KEY_SALT, and NATS_URL from the environment.
+// Load reads DATABASE_URL, JWT_SECRET, DEVICE_KEY_SALT, NATS_URL, and REDIS_URL from the environment.
 func Load() (Config, error) {
 	return load(os.LookupEnv)
 }
@@ -81,7 +94,19 @@ func load(lookup func(string) (string, bool)) (Config, error) {
 	}
 	cfg.NATSURL = natsURL
 
+	redisURL, ok := lookup("REDIS_URL")
+	if !ok || redisURL == "" {
+		return Config{}, errors.New("REDIS_URL is required")
+	}
+	if err := checkRedisURL(redisURL); err != nil {
+		return Config{}, err
+	}
+	cfg.RedisURL = redisURL
+
 	if err := loadFlush(lookup, &cfg); err != nil {
+		return Config{}, err
+	}
+	if err := loadWS(lookup, &cfg); err != nil {
 		return Config{}, err
 	}
 
@@ -117,6 +142,41 @@ func loadFlush(lookup func(string) (string, bool), cfg *Config) error {
 			return fmt.Errorf("FLEETOPS_ACCURACY_MAX_M must be a finite number greater than 0 and at most %g", maxAccuracyMaxM)
 		}
 		cfg.AccuracyMaxM = f
+	}
+
+	return nil
+}
+
+// checkRedisURL requires scheme redis or rediss and a host (GF-119). Its errors
+// name the variable only: url.Parse errors echo the input, so they are dropped.
+func checkRedisURL(raw string) error {
+	u, err := url.Parse(raw)
+	if err != nil || (u.Scheme != "redis" && u.Scheme != "rediss") || u.Hostname() == "" {
+		return errors.New("REDIS_URL must be a redis:// or rediss:// URL with a host")
+	}
+	return nil
+}
+
+// loadWS reads the WS hub and presence tunables (GF-107, GF-119). Each error
+// names the variable and never the value.
+func loadWS(lookup func(string) (string, bool), cfg *Config) error {
+	cfg.WSRoomCap = DefaultWSRoomCap
+	cfg.PresenceTTL = DefaultPresenceTTL
+
+	if v, ok := lookup("FLEETOPS_WS_ROOM_CAP"); ok && v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < minWSRoomCap || n > maxWSRoomCap {
+			return fmt.Errorf("FLEETOPS_WS_ROOM_CAP must be an integer from %d to %d", minWSRoomCap, maxWSRoomCap)
+		}
+		cfg.WSRoomCap = n
+	}
+
+	if v, ok := lookup("FLEETOPS_PRESENCE_TTL"); ok && v != "" {
+		d, err := time.ParseDuration(v)
+		if err != nil || d < minPresenceTTL || d > maxPresenceTTL {
+			return fmt.Errorf("FLEETOPS_PRESENCE_TTL must be a duration from %s to %s", minPresenceTTL, maxPresenceTTL)
+		}
+		cfg.PresenceTTL = d
 	}
 
 	return nil
