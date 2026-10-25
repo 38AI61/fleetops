@@ -1,0 +1,67 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  gates:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Put GOPATH bin on PATH
+        run: echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+      - name: Install pinned tools
+        run: make tools
+
+      - name: Format check
+        run: make fmt-check
+
+      - name: Lint
+        run: make lint
+
+      - name: Test
+        run: make test
+
+      - name: Start postgres
+        run: |
+          PGPW=$(openssl rand -hex 16)
+          echo "::add-mask::$PGPW"
+          docker run -d --name fleetops-ci-pg \
+            -e POSTGRES_USER=fleetops \
+            -e POSTGRES_DB=fleetops \
+            -e POSTGRES_PASSWORD="$PGPW" \
+            -p 127.0.0.1:55432:5432 \
+            postgis/postgis:16-3.4
+          ready=0
+          for _ in $(seq 1 60); do
+            if docker exec fleetops-ci-pg pg_isready -h 127.0.0.1 -U fleetops; then ready=1; break; fi
+            sleep 2
+          done
+          if [ "$ready" != 1 ]; then docker logs fleetops-ci-pg; exit 1; fi
+          echo "DATABASE_URL=postgres://fleetops:$PGPW@127.0.0.1:55432/fleetops?sslmode=disable" >> "$GITHUB_ENV"
+
+      - name: Migrate up
+        run: make migrate
+
+      - name: Migrate down 1
+        run: make migrate MIGRATE_ARGS="down 1"
+
+      - name: Migrate up again
+        run: make migrate
+
+      - name: Remove postgres container
+        if: always()
+        run: docker rm -f fleetops-ci-pg

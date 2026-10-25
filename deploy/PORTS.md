@@ -17,7 +17,7 @@ Infrastructure services bind to `127.0.0.1` only.
 
 | Service | Container port | Host port | Phase / runtime |
 |---|---|---|---|
-| minio | 9000 / 9001 | 10006 / 10007 | Phase 3, compose |
+| minio | 9000 / 9001 | 10006 / 10007 | Phase 12, compose |
 | api | 8080 | 10010 | local `go run` |
 | ws-hub | 8090 | 10011 | local `go run` |
 | web dispatcher | 5173 | 10012 | local Vite dev |
