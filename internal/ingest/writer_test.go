@@ -21,7 +21,7 @@ var flushBase = time.Date(2026, 10, 25, 12, 0, 0, 0, time.UTC)
 
 // flushEnv is one migrated database with a fleet, an admin actor, and a writer.
 type flushEnv struct {
-	t        *testing.T
+	t        testing.TB
 	conn     *sql.DB
 	svc      *registry.Service
 	actor    registry.Actor
@@ -30,7 +30,7 @@ type flushEnv struct {
 	counters *Counters
 }
 
-func newFlushEnv(t *testing.T) *flushEnv {
+func newFlushEnv(t testing.TB) *flushEnv {
 	t.Helper()
 	conn := testinfra.NewMigratedDB(t)
 	testinfra.EnsurePositionsPartitions(t, conn, flushBase, flushBase)

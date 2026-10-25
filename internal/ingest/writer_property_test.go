@@ -25,8 +25,8 @@ var propWindow = flushBase.Add(-90 * time.Second)
 // device, built once per test function.
 type propFixture struct {
 	*flushEnv
-	devices []int64 // devices[k] is paired to vehicles[k]
-	vehicle map[int64]int64
+	devices  []int64 // devices[k] is paired to vehicles[k]
+	vehicle  map[int64]int64
 	unpaired int64
 }
 
@@ -218,7 +218,7 @@ func TestBatchUpsertPermutationProperty(t *testing.T) {
 		want := snapshot(rt, f.conn)
 
 		f.reset(rt)
-		perm := rand.New(rand.NewSource(int64(seed))).Perm(len(batch))
+		perm := rand.New(rand.NewSource(int64(seed))).Perm(len(batch)) //nolint:gosec // seeded test permutation, not security
 		shuffled := make([]Message, len(batch))
 		for i, j := range perm {
 			shuffled[i] = batch[j]

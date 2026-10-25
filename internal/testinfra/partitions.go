@@ -16,7 +16,8 @@ func EnsurePositionsPartitions(t testing.TB, db *sql.DB, from, to time.Time) {
 	last := time.Date(to.UTC().Year(), to.UTC().Month(), 1, 0, 0, 0, 0, time.UTC)
 	for m := start; !m.After(last); m = m.AddDate(0, 1, 0) {
 		next := m.AddDate(0, 1, 0)
-		stmt := fmt.Sprintf(
+		// Bounds are formatted from time.Time values, never from input; DDL takes no bind parameters.
+		stmt := fmt.Sprintf( //nolint:gosec // see comment above
 			`CREATE TABLE IF NOT EXISTS positions_%04d_%02d PARTITION OF positions FOR VALUES FROM ('%s') TO ('%s')`,
 			m.Year(), int(m.Month()),
 			m.Format("2006-01-02 15:04:05+00"), next.Format("2006-01-02 15:04:05+00"),

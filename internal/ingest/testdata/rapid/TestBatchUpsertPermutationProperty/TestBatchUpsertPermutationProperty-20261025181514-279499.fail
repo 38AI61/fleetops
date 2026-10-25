@@ -1,0 +1,146 @@
+# 2026/10/25 18:15:14.552193 [TestBatchUpsertPermutationProperty] [rapid] draw batch_size: 3
+# 2026/10/25 18:15:14.552213 [TestBatchUpsertPermutationProperty] [rapid] draw vehicles: 1
+# 2026/10/25 18:15:14.552222 [TestBatchUpsertPermutationProperty] [rapid] draw device: 0
+# 2026/10/25 18:15:14.552230 [TestBatchUpsertPermutationProperty] [rapid] draw server_offset_ms: 0
+# 2026/10/25 18:15:14.552238 [TestBatchUpsertPermutationProperty] [rapid] draw lat: 1
+# 2026/10/25 18:15:14.552251 [TestBatchUpsertPermutationProperty] [rapid] draw lng: 1
+# 2026/10/25 18:15:14.552257 [TestBatchUpsertPermutationProperty] [rapid] draw heading: 1
+# 2026/10/25 18:15:14.552266 [TestBatchUpsertPermutationProperty] [rapid] draw accuracy: 1
+# 2026/10/25 18:15:14.552272 [TestBatchUpsertPermutationProperty] [rapid] draw vehicle_index: 0
+# 2026/10/25 18:15:14.552280 [TestBatchUpsertPermutationProperty] [rapid] draw device: 0
+# 2026/10/25 18:15:14.552285 [TestBatchUpsertPermutationProperty] [rapid] draw server_offset_ms: 0
+# 2026/10/25 18:15:14.552291 [TestBatchUpsertPermutationProperty] [rapid] draw lat: 1
+# 2026/10/25 18:15:14.552297 [TestBatchUpsertPermutationProperty] [rapid] draw lng: 1
+# 2026/10/25 18:15:14.552302 [TestBatchUpsertPermutationProperty] [rapid] draw heading: 1
+# 2026/10/25 18:15:14.552307 [TestBatchUpsertPermutationProperty] [rapid] draw accuracy: 1
+# 2026/10/25 18:15:14.552313 [TestBatchUpsertPermutationProperty] [rapid] draw vehicle_index: 0
+# 2026/10/25 18:15:14.552318 [TestBatchUpsertPermutationProperty] [rapid] draw device: 0
+# 2026/10/25 18:15:14.552322 [TestBatchUpsertPermutationProperty] [rapid] draw server_offset_ms: 30000
+# 2026/10/25 18:15:14.552337 [TestBatchUpsertPermutationProperty] [rapid] draw lat: 1
+# 2026/10/25 18:15:14.552342 [TestBatchUpsertPermutationProperty] [rapid] draw lng: 1
+# 2026/10/25 18:15:14.552347 [TestBatchUpsertPermutationProperty] [rapid] draw heading: 7.006492321624085e-46
+# 2026/10/25 18:15:14.552353 [TestBatchUpsertPermutationProperty] [rapid] draw accuracy: 1
+# 2026/10/25 18:15:14.552358 [TestBatchUpsertPermutationProperty] [rapid] draw vehicle_index: 0
+# 2026/10/25 18:15:14.552364 [TestBatchUpsertPermutationProperty] [rapid] draw seed: 0x0
+# 2026/10/25 18:15:14.553940 [TestBatchUpsertPermutationProperty] flush original: insert positions: pq: value out of range: underflow
+# 
+v0.4.8#11220993456020997824
+0x0
+0x38e38e38e38e4
+0x2
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x185b4f67a41a2a
+0x7530
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x10000000000000
+0x119649df747e23
+0x95
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
