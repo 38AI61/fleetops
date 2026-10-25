@@ -29,6 +29,7 @@ func TestCodeStatusTable(t *testing.T) {
 		{VehicleNotActive, http.StatusConflict},
 		{DeviceRevoked, http.StatusConflict},
 		{DeviceInUse, http.StatusConflict},
+		{Busy, http.StatusServiceUnavailable},
 	}
 	for _, tc := range cases {
 		t.Run(tc.code, func(t *testing.T) {
