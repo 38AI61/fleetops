@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -14,6 +15,7 @@ import (
 	"github.com/labstack/echo/v4"
 
 	"fleetops/internal/auth"
+	"fleetops/internal/registry"
 	"fleetops/internal/testinfra"
 	"fleetops/internal/users"
 )
@@ -28,8 +30,12 @@ type env struct {
 	url   string
 	db    *sql.DB
 	store *users.Store
+	reg   *registry.Service
 	clk   *clock
 }
+
+// registrySalt is 32 bytes and never a real secret (GF-30).
+var registrySalt = []byte(strings.Repeat("r", 32))
 
 // startServer mounts the auth and users routes exactly as services/api will,
 // over real HTTP on a loopback port.
@@ -53,6 +59,8 @@ func startServer(t *testing.T) *env {
 	e.GET("/users", uh.List, admin...)
 	e.POST("/users", uh.Create, admin...)
 	e.PATCH("/users/:id", uh.Update, admin...)
+	reg := &registry.Service{DB: db, Salt: registrySalt, Clock: clk.now}
+	(&registry.Handler{Svc: reg}).Register(e, auth.RequireAuth(iss))
 
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -60,7 +68,7 @@ func startServer(t *testing.T) *env {
 	}
 	go func() { _ = e.Server.Serve(ln) }()
 	t.Cleanup(func() { _ = e.Close() })
-	return &env{url: "http://" + ln.Addr().String(), db: db, store: store, clk: clk}
+	return &env{url: "http://" + ln.Addr().String(), db: db, store: store, reg: reg, clk: clk}
 }
 
 // fleetWith creates a fleet and one admin in it.
@@ -342,4 +350,93 @@ func TestSelfDemoteAndSelfDisableAreConflicts(t *testing.T) {
 func jsonNum(f float64) string {
 	b, _ := json.Marshal(int64(f))
 	return string(b)
+}
+
+// TestDriverLinkOverHTTP is GF-43: an admin links a user to a driver of the
+// same fleet, the linked user's token then reaches that driver, and unlinking
+// takes the access away again.
+func TestDriverLinkOverHTTP(t *testing.T) {
+	e := startServer(t)
+	fleetA, adminA := e.fleetWith(t, "A", "admin@a.example")
+	fleetB, adminB := e.fleetWith(t, "B", "admin@b.example")
+	linked := e.addUser(t, fleetA, "driver@a.example", "driver", adminPW)
+	adminTok, _ := e.login(t, "admin@a.example", adminPW)
+	driverTok, _ := e.login(t, "driver@a.example", adminPW)
+	ctx := context.Background()
+
+	ownDriver, err := e.reg.CreateDriver(ctx, registry.Actor{UserID: adminA, FleetID: fleetA},
+		registry.DriverInput{Name: "Own", LicenseNo: "OWN00001"})
+	if err != nil {
+		t.Fatalf("create driver: %v", err)
+	}
+	foreignDriver, err := e.reg.CreateDriver(ctx, registry.Actor{UserID: adminB, FleetID: fleetB},
+		registry.DriverInput{Name: "Foreign", LicenseNo: "FOR00001"})
+	if err != nil {
+		t.Fatalf("create foreign driver: %v", err)
+	}
+	linkPath := fmt.Sprintf("/users/%d", linked.ID)
+	ownPath := fmt.Sprintf("/drivers/%d", ownDriver.ID)
+
+	t.Run("unlinked driver cannot read its own row", func(t *testing.T) {
+		if r := e.send(t, http.MethodGet, ownPath, driverTok, "", nil); r.status != http.StatusNotFound {
+			t.Fatalf("before link = %d %s, want 404", r.status, r.body)
+		}
+	})
+	t.Run("admin links the user to an own-fleet driver", func(t *testing.T) {
+		before := e.auditCount(t)
+		r := e.send(t, http.MethodPatch, linkPath, adminTok, fmt.Sprintf(`{"driver_id":%d}`, ownDriver.ID), nil)
+		if r.status != http.StatusOK {
+			t.Fatalf("link = %d %s", r.status, r.body)
+		}
+		if got := e.auditCount(t) - before; got != 1 {
+			t.Fatalf("link wrote %d audit rows, want 1", got)
+		}
+		var action, target string
+		if err := e.db.QueryRow(`SELECT action, target FROM admin_audit ORDER BY id DESC LIMIT 1`).Scan(&action, &target); err != nil {
+			t.Fatalf("read audit: %v", err)
+		}
+		if action != users.ActionUpdate || target != fmt.Sprintf("user:%d", linked.ID) {
+			t.Fatalf("audit = %s %s, want user.update", action, target)
+		}
+	})
+	t.Run("linked driver reads its own row", func(t *testing.T) {
+		if r := e.send(t, http.MethodGet, ownPath, driverTok, "", nil); r.status != http.StatusOK {
+			t.Fatalf("after link = %d %s, want 200", r.status, r.body)
+		}
+	})
+	t.Run("foreign or missing driver id is 400 and writes nothing", func(t *testing.T) {
+		before := e.auditCount(t)
+		for _, id := range []int64{foreignDriver.ID, 999999} {
+			r := e.send(t, http.MethodPatch, linkPath, adminTok, fmt.Sprintf(`{"driver_id":%d}`, id), nil)
+			if r.status != http.StatusBadRequest || r.errCode(t) != "validation_failed" {
+				t.Fatalf("driver %d = %d %s, want 400", id, r.status, r.body)
+			}
+		}
+		if r := e.send(t, http.MethodPatch, linkPath, adminTok, `{"driver_id":"abc"}`, nil); r.status != http.StatusBadRequest {
+			t.Fatalf("non-integer = %d %s, want 400", r.status, r.body)
+		}
+		if got := e.auditCount(t) - before; got != 0 {
+			t.Fatalf("refused links wrote %d audit rows", got)
+		}
+		var still *int64
+		if err := e.db.QueryRow(`SELECT driver_id FROM users WHERE id = $1`, linked.ID).Scan(&still); err != nil || still == nil || *still != ownDriver.ID {
+			t.Fatalf("refused link changed driver_id to %v (%v)", still, err)
+		}
+	})
+	t.Run("non-admin cannot link", func(t *testing.T) {
+		e.addUser(t, fleetA, "dispatch@a.example", "dispatcher", adminPW)
+		tok, _ := e.login(t, "dispatch@a.example", adminPW)
+		if r := e.send(t, http.MethodPatch, linkPath, tok, fmt.Sprintf(`{"driver_id":%d}`, ownDriver.ID), nil); r.status != http.StatusForbidden {
+			t.Fatalf("dispatcher link = %d %s, want 403", r.status, r.body)
+		}
+	})
+	t.Run("unlink returns an empty driver list", func(t *testing.T) {
+		if r := e.send(t, http.MethodPatch, linkPath, adminTok, `{"driver_id":null}`, nil); r.status != http.StatusOK {
+			t.Fatalf("unlink = %d %s", r.status, r.body)
+		}
+		r := e.send(t, http.MethodGet, "/drivers", driverTok, "", nil)
+		if r.status != http.StatusOK || strings.TrimSpace(string(r.body)) != "[]" {
+			t.Fatalf("GET /drivers after unlink = %d %s, want []", r.status, r.body)
+		}
+	})
 }

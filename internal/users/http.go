@@ -2,6 +2,7 @@ package users
 
 import (
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -42,6 +43,8 @@ type patchRequest struct {
 	Role     *string `json:"role"`
 	Disabled *bool   `json:"disabled"`
 	Password *string `json:"password"`
+	// DriverID is raw so that an absent field and an explicit null differ (GF-43).
+	DriverID json.RawMessage `json:"driver_id"`
 }
 
 // List implements GET /users: the caller's fleet only, no password hashes.
@@ -118,14 +121,22 @@ func (h *Handler) Update(c echo.Context) error {
 	if err := c.Bind(&in); err != nil {
 		return apierr.Write(c, http.StatusBadRequest, apierr.ValidationFailed)
 	}
-	if in.Role == nil && in.Disabled == nil && in.Password == nil {
+	if in.Role == nil && in.Disabled == nil && in.Password == nil && in.DriverID == nil {
 		return apierr.Write(c, http.StatusBadRequest, apierr.ValidationFailed)
 	}
 	if in.Role != nil && !ValidRole(*in.Role) {
 		return apierr.Write(c, http.StatusBadRequest, apierr.ValidationFailed)
 	}
+	var driverID *int64
+	if in.DriverID != nil && string(in.DriverID) != "null" {
+		var v int64
+		if err := json.Unmarshal(in.DriverID, &v); err != nil {
+			return apierr.Write(c, http.StatusBadRequest, apierr.ValidationFailed)
+		}
+		driverID = &v
+	}
 
-	patch := Patch{Role: in.Role, Disabled: in.Disabled}
+	patch := Patch{Role: in.Role, Disabled: in.Disabled, SetDriver: in.DriverID != nil, DriverID: driverID}
 	action := ActionUpdate
 	if in.Password != nil {
 		if err := auth.CheckPolicy(*in.Password); err != nil {
@@ -157,6 +168,17 @@ func (h *Handler) Update(c echo.Context) error {
 	}
 	defer func() { _ = tx.Rollback() }()
 
+	// The driver must belong to the fleet before the UPDATE, because the FK
+	// would otherwise fail the write with a 500 (GF-43).
+	if driverID != nil {
+		inFleet, err := h.Store.DriverInFleet(ctx, tx, p.FleetID, *driverID)
+		if err != nil {
+			return err
+		}
+		if !inFleet {
+			return apierr.Write(c, http.StatusBadRequest, apierr.ValidationFailed)
+		}
+	}
 	u, err := h.Store.Update(ctx, tx, p.FleetID, id, patch)
 	if errors.Is(err, ErrNotFound) {
 		return apierr.Write(c, http.StatusNotFound, apierr.NotFound)
