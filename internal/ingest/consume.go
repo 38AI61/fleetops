@@ -242,18 +242,24 @@ func (c *Consumer) cycle(ctx context.Context, cons jetstream.Consumer) {
 		return
 	}
 
+	var unprocessed []jetstream.Msg
 	for raw := range batch.Messages() {
 		if ctx.Err() != nil {
-			// Fetched but not offered: redeliver at once (GF-95).
-			if err := raw.Nak(); err != nil {
-				log.Printf("ingest: nak on shutdown: %v", err)
-			}
+			unprocessed = append(unprocessed, raw)
 			continue
 		}
 		c.handle(ctx, raw)
 	}
 	if err := batch.Error(); err != nil && !errors.Is(err, nats.ErrTimeout) && !errors.Is(err, jetstream.ErrNoMessages) {
 		log.Printf("ingest: fetch batch: %v", err)
+	}
+	// Fetched but not offered: NAK with no delay (GF-95). This runs after the
+	// batch closes. A NAK during the batch would redeliver into the same open
+	// pull request and loop inside it.
+	for _, raw := range unprocessed {
+		if err := raw.Nak(); err != nil {
+			log.Printf("ingest: nak on shutdown: %v", err)
+		}
 	}
 
 	if ctx.Err() == nil {
