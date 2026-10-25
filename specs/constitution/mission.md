@@ -89,5 +89,6 @@ Full list in `roadmap.md` §4 (README §2.2 stretch items, §15 cloud profile, a
 | GF-1 | Driver **push notifications** deferred; MVP uses WS (`job.updated`, D-21) + polling fallback | §3 "push when online" | SPEC-AMEND deferral | Backlog |
 | GF-2 | `admin_audit(id, fleet_id, actor_id, action, target, at)` append-only table; every admin write records the actor | §8 "admin actions logged with actor" | SPEC-AMEND additive table | P2, P3 |
 | GF-3 | `POST /devices/:id/rotate` and `POST /devices/:id/revoke` (paths chosen here; plan named the operations only) | §8 | SPEC-AMEND additive endpoints | P3 |
+| GF-12 | Test and CI PostGIS image tag `postgis/postgis:16-3.4` (`testinfra.PostgisImage`); README §12 and compose keep `16` (not a published tag) until compose is touched in P4 | §12 | SPEC-AMEND image tag correction | P1 |
 
 Rule: any new SPEC-AMEND gets a row here and a decision ID (D-nn from the plan, or GF-n for self-gate additions) in `tech-stack.md` §11 (D-40).
