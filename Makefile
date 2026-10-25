@@ -23,7 +23,7 @@ fmt-check: ## fail if any Go file is not gofmt-clean
 	@out=$$($(GOFMT) -l .); if [ -n "$$out" ]; then echo "$$out"; exit 1; fi
 
 lint: fmt-check ## gofmt check, then golangci-lint
-	$(GOLANGCI_LINT) run
+	@PATH="$$(dirname "$$(command -v $(GO))"):$$PATH" $(GOLANGCI_LINT) run
 
 test: ## run all Go tests with the race detector
 	$(GO) test ./... -race -count=1
