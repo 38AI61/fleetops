@@ -51,6 +51,7 @@ README §11 plus additions (D-39):
 | `tools/simulator/`, `tools/seed/` | Simulator; first-fleet seed (D-05, D-12) |
 | `tools/loadtest/k6/` | k6 scripts (D-37, P23) |
 | `db/migrations/` | Shared migrations for api and ingest (D-13) |
+| `.github/workflows/` | CI workflow running the same make gates as local (GF-11, GF-15) |
 | `deploy/docker-compose.yml`, `deploy/PORTS.md` | Compose and port map (README §11, CLAUDE.md) |
 | `deploy/grafana/` | Dashboards as code (README §11, D-36) |
 | `deploy/osrm/` | `prepare.sh`; data in `deploy/osrm/data/` (gitignored) (D-10) |
