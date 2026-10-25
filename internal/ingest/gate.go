@@ -57,28 +57,25 @@ func (g *Gate) HoldSlots(n int) (release func()) {
 // JetStream's async path. It does not wait for the ack, so the caller can return
 // 204 before the ack (README §3). A failure after that point is logged with the
 // msg id and fleet and is not retried (GF-61).
+//
+// The ack goroutine is the only reader of the future's channels: a PubAckFuture
+// hands each value to one receiver, so a second reader would starve this one.
 func (g *Gate) Publish(js jetstream.JetStream, m Message) error {
-	_, err := g.publish(js, m)
-	return err
-}
-
-// publish is Publish with the ack future exposed for tests.
-func (g *Gate) publish(js jetstream.JetStream, m Message) (jetstream.PubAckFuture, error) {
 	if !g.acquire() {
-		return nil, ErrBusy
+		return ErrBusy
 	}
 	payload, err := m.Payload()
 	if err != nil {
 		g.release()
-		return nil, err
+		return err
 	}
 	fut, err := js.PublishAsync(m.Subject(), payload)
 	if err != nil {
 		g.release()
-		return nil, ErrBusy
+		return ErrBusy
 	}
 	go g.awaitAck(fut, m)
-	return fut, nil
+	return nil
 }
 
 // awaitAck frees the slot when the ack or the error arrives, and logs a failed
