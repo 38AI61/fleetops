@@ -29,6 +29,8 @@ docker compose -f deploy/docker-compose.yml up -d
 docker compose -f deploy/docker-compose.yml down
 ```
 
+The `nats` service runs with `-js` (JetStream, GF-62).
+
 ## Make targets
 
 Run from the repo root. `make help` lists every target.
@@ -49,17 +51,18 @@ Run from the repo root. `make help` lists every target.
 - Pins: Go 1.27.3 (`go.mod` toolchain line); golangci-lint v2.15.0 and golang-migrate CLI v4.18.3 (built with `-tags postgres`) in the Makefile.
 - Host override: `deploy/.local/tools.mk` (gitignored) may set `GO`, `GOFMT`, `GOLANGCI_LINT`, `MIGRATE` to host paths. The Makefile includes it.
 - `make migrate` requires `DATABASE_URL` in the environment; it is not read from `deploy/.env`.
-- Local API: `DATABASE_URL=… JWT_SECRET=… DEVICE_KEY_SALT=… go run ./services/api` listens on `127.0.0.1:10010` (`-addr` overrides). It does not run migrations.
+- Local API: `DATABASE_URL=… JWT_SECRET=… DEVICE_KEY_SALT=… NATS_URL=nats://127.0.0.1:10004 go run ./services/api` listens on `127.0.0.1:10010` (`-addr` overrides). It does not run migrations.
 - `JWT_SECRET` must be at least 32 bytes or the API and `make seed` refuse to start; generate one per shell with `openssl rand -hex 32`.
 - `DEVICE_KEY_SALT` is required and must be at least 32 bytes, or the API refuses to start before it opens the database (GF-30). Generate one per shell with `openssl rand -hex 32`. It is the HMAC key for device keys (D-29) and license hashes (D-31).
 - **Salt rotation (GF-50):** changing `DEVICE_KEY_SALT` invalidates every device key and every license hash. P3 ships no re-keying tool.
 - Registry (P3): `/vehicles`, `/drivers`, `/vehicles/:id/pairings` follow the README §8 role matrix. Device endpoints (`POST /devices`, `POST /devices/:id/rotate`, `POST /devices/:id/revoke`) are admin only; a device key never authenticates them (GF-47). Issued and rotated keys are shown once.
+- Ingest (P4): `POST /ingest/position` is device-key authenticated. The key goes in the `X-Device-Key` header, never in the body or `Authorization`. Any JWT gets 401 on this route (GF-52, GF-64). Startup creates the `GPS_RAW` stream (GF-59).
 - Migration rules (GF-5):
   - Files are `db/migrations/NNN_snake_name.up.sql` and `.down.sql`, sequential from `001`, no timestamps.
   - Each file is one transaction-friendly script: no `BEGIN`/`COMMIT`, no `CREATE INDEX CONCURRENTLY`.
   - Migrations are forward-only once merged to `main`; `down` exists for dev and the round-trip test.
   - A dirty `schema_migrations` makes `make migrate` fail. Fix the schema by hand, then `force`. Never edit `schema_migrations` by SQL.
-- Tests and CI use `postgis/postgis:16-3.4` (`testinfra.PostgisImage`, GF-12). Compose keeps the `16` tag until P4.
+- Tests and CI use `postgis/postgis:16-3.4` (`testinfra.PostgisImage`, GF-12). Compose uses the same tag (GF-62).
 - CI (`.github/workflows/ci.yml`) runs the same make targets as the local gates.
 
 ## Environment variables

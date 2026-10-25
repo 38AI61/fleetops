@@ -13,9 +13,11 @@ import (
 	"time"
 
 	_ "github.com/lib/pq"
+	"github.com/nats-io/nats.go"
 
 	"fleetops/internal/auth"
 	"fleetops/internal/config"
+	"fleetops/internal/ingest"
 )
 
 func main() {
@@ -41,12 +43,28 @@ func main() {
 		log.Fatalf("api: ping database: %v", err)
 	}
 
+	// NATS refuses startup on failure: a gateway that cannot publish must not serve (P4).
+	nc, err := nats.Connect(cfg.NATSURL)
+	if err != nil {
+		log.Fatalf("api: connect nats: %v", err)
+	}
+	defer nc.Close()
+	js, err := ingest.NewJetStream(nc)
+	if err != nil {
+		log.Fatalf("api: jetstream: %v", err)
+	}
+	if err := ingest.EnsureStream(context.Background(), js); err != nil {
+		log.Fatalf("api: ensure %s stream: %v", ingest.StreamName, err)
+	}
+
 	e := NewServer(Deps{
 		DB:            db,
 		Issuer:        issuer,
 		Clock:         time.Now,
 		Throttle:      auth.NewThrottle(time.Now),
 		DeviceKeySalt: []byte(cfg.DeviceKeySalt),
+		NATS:          js,
+		Gate:          ingest.NewGate(),
 	})
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

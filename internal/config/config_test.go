@@ -18,6 +18,7 @@ func validEnv(salt string) map[string]string {
 		"DATABASE_URL":    "postgres://fleetops@db.invalid/fleetops",
 		"JWT_SECRET":      strings.Repeat("s", 32),
 		"DEVICE_KEY_SALT": salt,
+		"NATS_URL":        "nats://nats.invalid:4222",
 	}
 }
 
@@ -113,5 +114,35 @@ func TestLoadDeviceKeySaltErrorNeverContainsValue(t *testing.T) {
 	}
 	if strings.Contains(err.Error(), salt) {
 		t.Fatalf("error leaks salt value: %v", err)
+	}
+}
+
+func TestLoadAcceptsNATSURL(t *testing.T) {
+	cfg, err := load(fakeEnv(validEnv(strings.Repeat("d", 32))))
+	if err != nil {
+		t.Fatalf("NATS_URL set: unexpected error %v", err)
+	}
+	if cfg.NATSURL != "nats://nats.invalid:4222" {
+		t.Fatalf("NATS_URL not loaded: %q", cfg.NATSURL)
+	}
+}
+
+func TestLoadRefusesMissingNATSURL(t *testing.T) {
+	env := validEnv(strings.Repeat("d", 32))
+	delete(env, "NATS_URL")
+	_, err := load(fakeEnv(env))
+	if err == nil {
+		t.Fatal("missing NATS_URL: want error, got nil")
+	}
+	if !strings.Contains(err.Error(), "NATS_URL") {
+		t.Errorf("error should name NATS_URL: %v", err)
+	}
+}
+
+func TestLoadRefusesEmptyNATSURL(t *testing.T) {
+	env := validEnv(strings.Repeat("d", 32))
+	env["NATS_URL"] = ""
+	if _, err := load(fakeEnv(env)); err == nil {
+		t.Fatal("empty NATS_URL: want error, got nil")
 	}
 }

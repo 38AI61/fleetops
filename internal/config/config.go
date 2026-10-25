@@ -19,9 +19,10 @@ type Config struct {
 	DatabaseURL   string
 	JWTSecret     string
 	DeviceKeySalt string
+	NATSURL       string
 }
 
-// Load reads DATABASE_URL, JWT_SECRET, and DEVICE_KEY_SALT from the environment.
+// Load reads DATABASE_URL, JWT_SECRET, DEVICE_KEY_SALT, and NATS_URL from the environment.
 func Load() (Config, error) {
 	return load(os.LookupEnv)
 }
@@ -52,6 +53,12 @@ func load(lookup func(string) (string, bool)) (Config, error) {
 		return Config{}, fmt.Errorf("DEVICE_KEY_SALT must be at least %d bytes", MinDeviceKeySaltBytes)
 	}
 	cfg.DeviceKeySalt = salt
+
+	natsURL, ok := lookup("NATS_URL")
+	if !ok || natsURL == "" {
+		return Config{}, errors.New("NATS_URL is required")
+	}
+	cfg.NATSURL = natsURL
 
 	return cfg, nil
 }

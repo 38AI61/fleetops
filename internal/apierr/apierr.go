@@ -23,6 +23,9 @@ const (
 	VehicleNotActive = "vehicle_not_active"
 	DeviceRevoked    = "device_revoked"
 	DeviceInUse      = "device_in_use"
+
+	// Ingest code (GF-60): the publish gate is full or the publish failed.
+	Busy = "busy"
 )
 
 // Write sends the envelope with the given status.

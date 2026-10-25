@@ -8,7 +8,7 @@
 
 services:
   postgres:
-    image: postgis/postgis:16
+    image: postgis/postgis:16-3.4
     environment:
       POSTGRES_USER: fleetops
       # Local-dev default only. Override via deploy/.env (gitignored), never commit a real secret.
@@ -42,6 +42,7 @@ services:
     # nats:2 ships no shell or HTTP client, so there is no in-container healthcheck yet.
     # Monitoring endpoint (8222) is intentionally not published.
     image: nats:2
+    command: ["-js"]
     ports:
       - "127.0.0.1:10004:4222"
     restart: unless-stopped
