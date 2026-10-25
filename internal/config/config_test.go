@@ -12,12 +12,20 @@ func fakeEnv(env map[string]string) func(string) (string, bool) {
 	}
 }
 
+// validEnv returns a complete environment with the given salt.
+func validEnv(salt string) map[string]string {
+	return map[string]string{
+		"DATABASE_URL":    "postgres://fleetops@db.invalid/fleetops",
+		"JWT_SECRET":      strings.Repeat("s", 32),
+		"DEVICE_KEY_SALT": salt,
+	}
+}
+
 func TestLoadAcceptsSecretOfExactlyMinimumLength(t *testing.T) {
 	secret := strings.Repeat("s", 32)
-	cfg, err := load(fakeEnv(map[string]string{
-		"DATABASE_URL": "postgres://fleetops@db.invalid/fleetops",
-		"JWT_SECRET":   secret,
-	}))
+	env := validEnv(strings.Repeat("d", 32))
+	env["JWT_SECRET"] = secret
+	cfg, err := load(fakeEnv(env))
 	if err != nil {
 		t.Fatalf("32-byte secret: unexpected error %v", err)
 	}
@@ -27,11 +35,9 @@ func TestLoadAcceptsSecretOfExactlyMinimumLength(t *testing.T) {
 }
 
 func TestLoadRefusesShortSecret(t *testing.T) {
-	secret := strings.Repeat("s", 31)
-	_, err := load(fakeEnv(map[string]string{
-		"DATABASE_URL": "postgres://fleetops@db.invalid/fleetops",
-		"JWT_SECRET":   secret,
-	}))
+	env := validEnv(strings.Repeat("d", 32))
+	env["JWT_SECRET"] = strings.Repeat("s", 31)
+	_, err := load(fakeEnv(env))
 	if err == nil {
 		t.Fatal("31-byte secret: want error, got nil")
 	}
@@ -42,7 +48,8 @@ func TestLoadRefusesShortSecret(t *testing.T) {
 
 func TestLoadRefusesMissingDatabaseURL(t *testing.T) {
 	_, err := load(fakeEnv(map[string]string{
-		"JWT_SECRET": strings.Repeat("s", 32),
+		"JWT_SECRET":      strings.Repeat("s", 32),
+		"DEVICE_KEY_SALT": strings.Repeat("d", 32),
 	}))
 	if err == nil {
 		t.Fatal("missing DATABASE_URL: want error, got nil")
@@ -54,14 +61,57 @@ func TestLoadRefusesMissingDatabaseURL(t *testing.T) {
 
 func TestLoadErrorNeverContainsSecret(t *testing.T) {
 	secret := "hunter2-not-long-enough"
-	_, err := load(fakeEnv(map[string]string{
-		"DATABASE_URL": "postgres://fleetops@db.invalid/fleetops",
-		"JWT_SECRET":   secret,
-	}))
+	env := validEnv(strings.Repeat("d", 32))
+	env["JWT_SECRET"] = secret
+	_, err := load(fakeEnv(env))
 	if err == nil {
 		t.Fatal("short secret: want error, got nil")
 	}
 	if strings.Contains(err.Error(), secret) {
 		t.Fatalf("error leaks secret value: %v", err)
+	}
+}
+
+func TestLoadAcceptsDeviceKeySaltOfExactlyMinimumLength(t *testing.T) {
+	salt := strings.Repeat("d", 32)
+	cfg, err := load(fakeEnv(validEnv(salt)))
+	if err != nil {
+		t.Fatalf("32-byte salt: unexpected error %v", err)
+	}
+	if cfg.DeviceKeySalt != salt {
+		t.Fatalf("salt not loaded")
+	}
+}
+
+func TestLoadRefusesShortDeviceKeySalt(t *testing.T) {
+	_, err := load(fakeEnv(validEnv(strings.Repeat("d", 31))))
+	if err == nil {
+		t.Fatal("31-byte salt: want error, got nil")
+	}
+	if !strings.Contains(err.Error(), "DEVICE_KEY_SALT") {
+		t.Errorf("error should name DEVICE_KEY_SALT: %v", err)
+	}
+}
+
+func TestLoadRefusesMissingDeviceKeySalt(t *testing.T) {
+	env := validEnv("")
+	delete(env, "DEVICE_KEY_SALT")
+	_, err := load(fakeEnv(env))
+	if err == nil {
+		t.Fatal("missing salt: want error, got nil")
+	}
+	if !strings.Contains(err.Error(), "DEVICE_KEY_SALT") {
+		t.Errorf("error should name DEVICE_KEY_SALT: %v", err)
+	}
+}
+
+func TestLoadDeviceKeySaltErrorNeverContainsValue(t *testing.T) {
+	salt := "salt-value-that-is-too-short"
+	_, err := load(fakeEnv(validEnv(salt)))
+	if err == nil {
+		t.Fatal("short salt: want error, got nil")
+	}
+	if strings.Contains(err.Error(), salt) {
+		t.Fatalf("error leaks salt value: %v", err)
 	}
 }

@@ -35,11 +35,15 @@ type User struct {
 // Disabled reports whether the account has been disabled.
 func (u User) Disabled() bool { return u.DisabledAt != nil }
 
-// Patch changes any of role, disabled, or password hash. Nil fields are unchanged.
+// Patch changes any of role, disabled, password hash, or driver link. Nil
+// fields are unchanged. SetDriver turns the driver link on; DriverID nil with
+// SetDriver unlinks (GF-43).
 type Patch struct {
 	Role         *string
 	Disabled     *bool
 	PasswordHash *string
+	SetDriver    bool
+	DriverID     *int64
 }
 
 // Store is the users table accessor. Reads run on the pool; writes take the
@@ -150,10 +154,11 @@ func (s *Store) Update(ctx context.Context, tx *sql.Tx, fleetID, id int64, p Pat
 		     disabled_at   = CASE
 		         WHEN $5::boolean IS NULL THEN disabled_at
 		         WHEN $5::boolean         THEN COALESCE(disabled_at, now())
-		         ELSE NULL END
+		         ELSE NULL END,
+		     driver_id     = CASE WHEN $6::boolean THEN $7::bigint ELSE driver_id END
 		 WHERE id = $1 AND fleet_id = $2
 		 RETURNING id, fleet_id, email, role, disabled_at, created_at, password_hash`,
-		id, fleetID, p.Role, p.PasswordHash, p.Disabled,
+		id, fleetID, p.Role, p.PasswordHash, p.Disabled, p.SetDriver, p.DriverID,
 	).Scan(&u.ID, &u.FleetID, &u.Email, &u.Role, &u.DisabledAt, &u.CreatedAt, &u.PasswordHash)
 	if errors.Is(err, sql.ErrNoRows) {
 		return User{}, ErrNotFound
@@ -162,6 +167,19 @@ func (s *Store) Update(ctx context.Context, tx *sql.Tx, fleetID, id int64, p Pat
 		return User{}, fmt.Errorf("update user: %w", err)
 	}
 	return u, nil
+}
+
+// DriverInFleet reports whether a driver row exists in fleetID. The users FK
+// checks existence only, so the fleet check is explicit (GF-43).
+func (s *Store) DriverInFleet(ctx context.Context, tx *sql.Tx, fleetID, driverID int64) (bool, error) {
+	var ok bool
+	err := tx.QueryRowContext(ctx,
+		`SELECT EXISTS (SELECT 1 FROM drivers WHERE id = $1 AND fleet_id = $2)`, driverID, fleetID,
+	).Scan(&ok)
+	if err != nil {
+		return false, fmt.Errorf("check driver in fleet: %w", err)
+	}
+	return ok, nil
 }
 
 // SetDisabled disables or re-enables a user inside tx.

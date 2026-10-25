@@ -22,7 +22,7 @@ func main() {
 	addr := flag.String("addr", "127.0.0.1:10010", "listen address (10010 is the reserved local api port)")
 	flag.Parse()
 
-	// config.Load refuses a short JWT_SECRET before the database is opened.
+	// config.Load refuses a short JWT_SECRET or DEVICE_KEY_SALT before the database is opened.
 	cfg, err := config.Load()
 	if err != nil {
 		log.Fatalf("api: %v", err)
@@ -42,10 +42,11 @@ func main() {
 	}
 
 	e := NewServer(Deps{
-		DB:       db,
-		Issuer:   issuer,
-		Clock:    time.Now,
-		Throttle: auth.NewThrottle(time.Now),
+		DB:            db,
+		Issuer:        issuer,
+		Clock:         time.Now,
+		Throttle:      auth.NewThrottle(time.Now),
+		DeviceKeySalt: []byte(cfg.DeviceKeySalt),
 	})
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

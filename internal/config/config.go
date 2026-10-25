@@ -11,13 +11,17 @@ import (
 // MinJWTSecretBytes is the shortest JWT_SECRET the process accepts (D-03).
 const MinJWTSecretBytes = 32
 
+// MinDeviceKeySaltBytes is the shortest DEVICE_KEY_SALT the process accepts (GF-30).
+const MinDeviceKeySaltBytes = 32
+
 // Config holds the settings the API and tools need at startup.
 type Config struct {
-	DatabaseURL string
-	JWTSecret   string
+	DatabaseURL   string
+	JWTSecret     string
+	DeviceKeySalt string
 }
 
-// Load reads DATABASE_URL and JWT_SECRET from the environment.
+// Load reads DATABASE_URL, JWT_SECRET, and DEVICE_KEY_SALT from the environment.
 func Load() (Config, error) {
 	return load(os.LookupEnv)
 }
@@ -39,6 +43,15 @@ func load(lookup func(string) (string, bool)) (Config, error) {
 		return Config{}, fmt.Errorf("JWT_SECRET must be at least %d bytes", MinJWTSecretBytes)
 	}
 	cfg.JWTSecret = secret
+
+	salt, ok := lookup("DEVICE_KEY_SALT")
+	if !ok || salt == "" {
+		return Config{}, errors.New("DEVICE_KEY_SALT is required")
+	}
+	if len(salt) < MinDeviceKeySaltBytes {
+		return Config{}, fmt.Errorf("DEVICE_KEY_SALT must be at least %d bytes", MinDeviceKeySaltBytes)
+	}
+	cfg.DeviceKeySalt = salt
 
 	return cfg, nil
 }

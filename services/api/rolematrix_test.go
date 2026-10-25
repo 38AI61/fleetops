@@ -1,9 +1,12 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"testing"
+
+	"fleetops/internal/registry"
 )
 
 // roleCols are the callers of the role matrix (R-6). "" means no token.
@@ -15,22 +18,52 @@ var roleCols = []struct{ name, role string }{
 	{"unauthenticated", ""},
 }
 
-// TestRoleMatrix is the R-6 table: every P2 user verb against every caller.
-// Expected values follow §10 and GF-28. Future phases add rows to this table.
+// TestRoleMatrix is the R-6 table: every P2 user verb and every P3 registry
+// verb against every caller. Expected values follow spec 03 group 11 and GF-28.
+// Future phases add rows to this table.
 func TestRoleMatrix(t *testing.T) {
 	h := startServer(t)
 	fleet := h.fleet(t, "A")
 	tokens := map[string]string{"": ""}
+	ids := map[string]int64{}
 	for _, c := range roleCols {
 		if c.role == "" {
 			continue
 		}
 		email := c.role + "@a.example"
-		h.user(t, fleet, email, c.role)
+		ids[c.role] = h.user(t, fleet, email, c.role)
 		tokens[c.role] = h.login(t, email)
 	}
 	target := h.user(t, fleet, "target@a.example", "dispatcher")
 	targetPath := fmt.Sprintf("/users/%d", target)
+
+	// Registry fixtures. The admin writes them through the service so the
+	// matrix rows start from known rows; the driver caller is linked to driver.
+	svc := &registry.Service{DB: h.db, Salt: testSalt, Clock: h.clock.now}
+	admin := registry.Actor{UserID: ids["admin"], FleetID: fleet}
+	ctx := context.Background()
+	vehicle, err := svc.CreateVehicle(ctx, admin, registry.VehicleInput{Plate: "RMX0001"})
+	if err != nil {
+		t.Fatalf("fixture vehicle: %v", err)
+	}
+	vehiclePath := fmt.Sprintf("/vehicles/%d", vehicle.ID)
+	driver, err := svc.CreateDriver(ctx, admin, registry.DriverInput{Name: "Linked", LicenseNo: "LINKED01"})
+	if err != nil {
+		t.Fatalf("fixture driver: %v", err)
+	}
+	if _, err := h.db.Exec(`UPDATE users SET driver_id = $1 WHERE id = $2`, driver.ID, ids["driver"]); err != nil {
+		t.Fatalf("link driver user: %v", err)
+	}
+	driverPath := fmt.Sprintf("/drivers/%d", driver.ID)
+	pairingsPath := fmt.Sprintf("/vehicles/%d/pairings", vehicle.ID)
+	rotateDev, err := svc.IssueDevice(ctx, admin, registry.KindPWA)
+	if err != nil {
+		t.Fatalf("fixture device: %v", err)
+	}
+	revokeDev, err := svc.IssueDevice(ctx, admin, registry.KindTracker)
+	if err != nil {
+		t.Fatalf("fixture device: %v", err)
+	}
 
 	const (
 		ok200 = http.StatusOK
@@ -58,15 +91,53 @@ func TestRoleMatrix(t *testing.T) {
 		{"POST /users (malformed body)", http.MethodPost, "/users", func(int) string {
 			return `{"email":`
 		}, [5]int{bad, forb, forb, forb, unau}},
+
+		{"GET /vehicles", http.MethodGet, "/vehicles", func(int) string { return "" }, [5]int{ok200, ok200, ok200, forb, unau}},
+		{"GET /vehicles/:id", http.MethodGet, vehiclePath, func(int) string { return "" }, [5]int{ok200, ok200, ok200, forb, unau}},
+		{"POST /vehicles", http.MethodPost, "/vehicles", func(n int) string {
+			return fmt.Sprintf(`{"plate":"RM%06d"}`, n)
+		}, [5]int{ok201, ok201, ok201, forb, unau}},
+		{"PATCH /vehicles/:id", http.MethodPatch, vehiclePath, func(int) string {
+			return `{"model":"Ford Transit"}`
+		}, [5]int{ok200, ok200, forb, forb, unau}},
+
+		{"GET /drivers", http.MethodGet, "/drivers", func(int) string { return "" }, [5]int{ok200, ok200, ok200, ok200, unau}},
+		{"GET /drivers/:id (own id for driver)", http.MethodGet, driverPath, func(int) string { return "" }, [5]int{ok200, ok200, ok200, ok200, unau}},
+		{"POST /drivers", http.MethodPost, "/drivers", func(n int) string {
+			return fmt.Sprintf(`{"name":"N%d","license_no":"LIC%08d"}`, n, n)
+		}, [5]int{ok201, ok201, ok201, forb, unau}},
+		{"PATCH /drivers/:id", http.MethodPatch, driverPath, func(int) string {
+			return `{"phone":"+90 555 0000"}`
+		}, [5]int{ok200, ok200, forb, forb, unau}},
+
+		{"GET /vehicles/:id/pairings", http.MethodGet, pairingsPath, func(int) string { return "" }, [5]int{ok200, ok200, ok200, forb, unau}},
+		// Each pair cell pairs a fresh device, so the admin and manager cells are both new rows (201).
+		{"POST /vehicles/:id/pairings", http.MethodPost, pairingsPath, func(int) string {
+			d, err := svc.IssueDevice(ctx, admin, registry.KindPWA)
+			if err != nil {
+				t.Fatalf("pairing fixture device: %v", err)
+			}
+			return fmt.Sprintf(`{"device_id":%d,"driver_id":null}`, d.ID)
+		}, [5]int{ok201, ok201, forb, forb, unau}},
+
+		{"POST /devices", http.MethodPost, "/devices", func(int) string {
+			return `{"kind":"pwa"}`
+		}, [5]int{ok201, forb, forb, forb, unau}},
+		{"POST /devices/:id/rotate", http.MethodPost, fmt.Sprintf("/devices/%d/rotate", rotateDev.ID), func(int) string { return "" },
+			[5]int{ok200, forb, forb, forb, unau}},
+		// Revoke comes after rotate: rotate needs a live device.
+		{"POST /devices/:id/revoke", http.MethodPost, fmt.Sprintf("/devices/%d/revoke", revokeDev.ID), func(int) string { return "" },
+			[5]int{ok200, forb, forb, forb, unau}},
 	}
 
-	seq := 0 // gives each POST a unique email
+	seq := 0 // gives each POST a unique email, plate, or license
 	for _, row := range rows {
 		for i, c := range roleCols {
 			seq++
-			n := seq
+			// Bodies are built here, outside the subtest, so a fixture failure is a fatal on t.
+			body := row.body(seq)
 			t.Run(row.name+"/"+c.name, func(t *testing.T) {
-				r := h.do(t, row.method, row.path, tokens[c.role], row.body(n), nil)
+				r := h.do(t, row.method, row.path, tokens[c.role], body, nil)
 				if r.status != row.want[i] {
 					t.Fatalf("status = %d (%s), want %d", r.status, r.body, row.want[i])
 				}
