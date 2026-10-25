@@ -158,7 +158,7 @@ Runnable on this host. Host tools: `/root/.local/go/bin/go`, `/root/.local/bin/g
 7. **Config (GF-63).** `go test ./internal/config -v` → `NATS_URL` missing refused; error text contains no value. **Pass:** exit 0.
 8. **Scope fence and schema untouched.** `git diff --name-only main...HEAD -- db/ README.md deploy/PORTS.md` → empty output. `git diff --name-only main...HEAD` contains no `.env`. **Pass:** empty output for the first; no `.env` path for the second.
 9. **No secret leakage (R-9).** `grep -R "fo_dev_[A-Za-z0-9_-]\{43\}" --include=*.go --include=*.sql --include=*.md .` → only test code that builds keys with `devicekey.Generate`; no literal key string. **Pass:** no literal 43-character secret in any file.
-10. **Salt and JWT unchanged.** `go test ./internal/config -run 'Test(DeviceKeySalt|JWTSecret)' -v` → PASS (P2/P3 cases unchanged). **Pass:** exit 0.
+10. **Salt and JWT unchanged.** `go test ./internal/config -run 'DeviceKeySalt|Secret' -v` → PASS (the P2/P3 salt and JWT-secret cases unchanged; the earlier pattern `Test(DeviceKeySalt|JWTSecret)` matched no test names because every config test is prefixed `TestLoad`). **Pass:** exit 0.
 
 ## Testing depth
 
