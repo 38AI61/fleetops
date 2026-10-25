@@ -48,7 +48,7 @@ func TestParseSecretWithUnderscoreAndDash(t *testing.T) {
 
 func TestParseRejectsMalformed(t *testing.T) {
 	valid := "fo_dev_1_" + katSecret
-	cases := map[string]string{
+	cases := map[string]string{ //nolint:gosec // made-up key fixtures, not credentials
 		"leading zero id":    "fo_dev_01_" + katSecret,
 		"zero id":            "fo_dev_0_" + katSecret,
 		"empty secret":       "fo_dev_1_",
