@@ -508,7 +508,7 @@ func TestDeviceKeyLifecycle(t *testing.T) {
 	}
 
 	revoked := e.send(t, admin, http.MethodPost, fmt.Sprintf("/devices/%d/revoke", iss.ID), "")
-	if revoked.status != http.StatusOK || keyPattern.Match(revoked.body) {
+	if revoked.status != http.StatusOK || strings.Contains(string(revoked.body), "fo_dev_") {
 		t.Fatalf("revoke = %d %s", revoked.status, revoked.body)
 	}
 	var first Device
@@ -520,8 +520,8 @@ func TestDeviceKeyLifecycle(t *testing.T) {
 	if again.status != http.StatusOK || first.RevokedAt == nil || second.RevokedAt == nil || !first.RevokedAt.Equal(*second.RevokedAt) {
 		t.Fatalf("second revoke = %d %s, want the first timestamp", again.status, again.body)
 	}
-	if r := e.send(t, admin, http.MethodPost, fmt.Sprintf("/devices/%d/rotate", iss.ID), ""); r.status != http.StatusConflict || r.errCode(t) != "device_revoked" {
-		t.Fatalf("rotate revoked = %d %s, want 409 device_revoked", r.status, r.body)
+	if r := e.send(t, admin, http.MethodPost, fmt.Sprintf("/devices/%d/rotate", iss.ID), ""); r.status != http.StatusConflict || r.errCode(t) != "device_revoked" || strings.Contains(string(r.body), "fo_dev_") {
+		t.Fatalf("rotate revoked = %d %s, want 409 device_revoked and no key", r.status, r.body)
 	}
 	if _, err := AuthenticateDeviceKey(ctx, e.db, storeSalt, rot.APIKey); !errors.Is(err, ErrDeviceRevoked) {
 		t.Fatalf("revoked key = %v, want ErrDeviceRevoked", err)

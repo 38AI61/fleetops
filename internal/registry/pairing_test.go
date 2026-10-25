@@ -4,8 +4,16 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"sync"
 	"testing"
+	"time"
+
+	"github.com/labstack/echo/v4"
+
+	"fleetops/internal/auth"
 )
 
 // pairFixture adds one active vehicle, two devices, and one driver to fleet A.
@@ -102,6 +110,29 @@ func TestPairingSwapKeepsHistory(t *testing.T) {
 	}
 	if m := f.mirror(t, f.vehicle); m == nil || *m != f.devX {
 		t.Fatalf("mirror after re-pair = %v, want %d", m, f.devX)
+	}
+
+	// The same history comes back over GET /vehicles/:id/pairings, newest first.
+	clock := func() time.Time { return *f.clock }
+	iss, err := auth.NewIssuer(httpSecret, clock)
+	mustOK(t, err, "issuer")
+	tok, err := iss.Issue(f.actorA.UserID, f.fleetA, roleAdmin)
+	mustOK(t, err, "issue token")
+	e := echo.New()
+	(&Handler{Svc: f.svc}).Register(e, auth.RequireAuth(iss))
+	req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/vehicles/%d/pairings", f.vehicle), nil)
+	req.Header.Set("Authorization", "Bearer "+tok)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+	var rows []Pairing
+	decode(t, rec.Body.Bytes(), &rows)
+	if rec.Code != http.StatusOK || len(rows) != 3 {
+		t.Fatalf("GET pairings = %d %s, want 200 with 3 rows", rec.Code, rec.Body)
+	}
+	for i := range rows {
+		if rows[i].ID != history[i].ID {
+			t.Fatalf("GET row %d id = %d, want %d (newest first)", i, rows[i].ID, history[i].ID)
+		}
 	}
 }
 
