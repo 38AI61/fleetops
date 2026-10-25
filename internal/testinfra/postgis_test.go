@@ -14,7 +14,7 @@ func TestStartPostgisHasPostGIS(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open: %v", err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	var version string
 	if err := conn.QueryRow("SELECT postgis_lib_version()").Scan(&version); err != nil {

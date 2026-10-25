@@ -21,7 +21,7 @@ func TestMigrationRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open: %v", err)
 	}
-	t.Cleanup(func() { conn.Close() })
+	t.Cleanup(func() { _ = conn.Close() })
 
 	src, err := iofs.New(db.Migrations, "migrations")
 	if err != nil {
@@ -31,7 +31,7 @@ func TestMigrationRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("migrate instance: %v", err)
 	}
-	t.Cleanup(func() { m.Close() })
+	t.Cleanup(func() { _, _ = m.Close() })
 
 	t.Run("up", func(t *testing.T) {
 		if err := m.Up(); err != nil {
