@@ -11,7 +11,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/nats-io/nats.go/jetstream"
+
 	"fleetops/internal/auth"
+	"fleetops/internal/ingest"
 	"fleetops/internal/testinfra"
 	"fleetops/internal/users"
 )
@@ -35,6 +38,8 @@ type harness struct {
 	clock  *fakeClock
 	issuer *auth.Issuer
 	store  *users.Store
+	js     jetstream.JetStream
+	gate   *ingest.Gate
 }
 
 // startServer serves the real API (NewServer) over HTTP and returns the harness.
@@ -46,12 +51,19 @@ func startServer(t *testing.T) *harness {
 	if err != nil {
 		t.Fatalf("NewIssuer: %v", err)
 	}
+	js := testinfra.NewJetStream(t)
+	if err := ingest.EnsureStream(context.Background(), js); err != nil {
+		t.Fatalf("EnsureStream: %v", err)
+	}
+	gate := ingest.NewGate()
 	e := NewServer(Deps{
 		DB:            db,
 		Issuer:        iss,
 		Clock:         clk.now,
 		Throttle:      auth.NewThrottle(clk.now),
 		DeviceKeySalt: testSalt,
+		NATS:          js,
+		Gate:          gate,
 	})
 
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
@@ -70,6 +82,8 @@ func startServer(t *testing.T) *harness {
 		clock:  clk,
 		issuer: iss,
 		store:  users.NewStore(db),
+		js:     js,
+		gate:   gate,
 	}
 }
 
