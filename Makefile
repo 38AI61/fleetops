@@ -32,8 +32,8 @@ migrate: ## apply migrations (MIGRATE_ARGS="up" default; e.g. MIGRATE_ARGS="down
 	@if [ -z "$$DATABASE_URL" ]; then echo "DATABASE_URL is not set" >&2; exit 2; fi
 	$(MIGRATE) -path db/migrations -database "$$DATABASE_URL" $(MIGRATE_ARGS)
 
-seed: ## stub: demo seed lands in P2
-	@echo "seed: tools/seed lands in P2 (D-05)" >&2; exit 1
+seed: ## bootstrap first fleet + admin (D-05); SEED_ARGS="--admin-email you@example.com"
+	$(GO) run ./tools/seed $(SEED_ARGS)
 
 seed-demo: ## stub: demo fleet seed lands in P23
 	@echo "seed-demo: lands in P23 (roadmap)" >&2; exit 1

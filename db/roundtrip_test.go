@@ -13,7 +13,8 @@ import (
 	"fleetops/internal/testinfra"
 )
 
-// TestMigrationRoundTrip is the P1 smoke test: up -> down -> up on PostGIS.
+// TestMigrationRoundTrip is the P1 smoke test extended in P2: up -> down to
+// zero -> up on PostGIS, with migrations 001-004 applied.
 func TestMigrationRoundTrip(t *testing.T) {
 	dsn := testinfra.StartPostgis(t)
 
@@ -37,7 +38,7 @@ func TestMigrationRoundTrip(t *testing.T) {
 		if err := m.Up(); err != nil {
 			t.Fatalf("up: %v", err)
 		}
-		assertVersion(t, m, 1)
+		assertVersion(t, m, 4)
 		assertSchema(t, conn, true)
 	})
 
@@ -55,7 +56,7 @@ func TestMigrationRoundTrip(t *testing.T) {
 		if err := m.Up(); err != nil {
 			t.Fatalf("up again: %v", err)
 		}
-		assertVersion(t, m, 1)
+		assertVersion(t, m, 4)
 		assertSchema(t, conn, true)
 	})
 
@@ -82,18 +83,24 @@ func assertVersion(t *testing.T, m *migrate.Migrate, want uint) {
 
 func assertSchema(t *testing.T, conn *sql.DB, present bool) {
 	t.Helper()
-	var fleets, postgis bool
-	if err := conn.QueryRow(`SELECT EXISTS (SELECT 1 FROM information_schema.tables
-		WHERE table_schema = 'public' AND table_name = 'fleets')`).Scan(&fleets); err != nil {
-		t.Fatalf("query fleets: %v", err)
-	}
-	if err := conn.QueryRow(`SELECT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'postgis')`).Scan(&postgis); err != nil {
-		t.Fatalf("query postgis: %v", err)
-	}
-	if fleets != present {
-		t.Errorf("fleets table present=%v, want %v", fleets, present)
-	}
-	if postgis != present {
-		t.Errorf("postgis extension present=%v, want %v", postgis, present)
+	for _, obj := range []struct {
+		kind, name, query string
+	}{
+		{"table", "fleets", `SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'fleets')`},
+		{"table", "users", `SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'users')`},
+		{"table", "refresh_tokens", `SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'refresh_tokens')`},
+		{"table", "admin_audit", `SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'admin_audit')`},
+		{"function", "admin_audit_append_only", `SELECT EXISTS (SELECT 1 FROM pg_proc WHERE proname = 'admin_audit_append_only')`},
+		{"extension", "postgis", `SELECT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'postgis')`},
+		{"extension", "citext", `SELECT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'citext')`},
+		{"column", "fleets.timezone", `SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'fleets' AND column_name = 'timezone')`},
+	} {
+		var got bool
+		if err := conn.QueryRow(obj.query).Scan(&got); err != nil {
+			t.Fatalf("query %s %s: %v", obj.kind, obj.name, err)
+		}
+		if got != present {
+			t.Errorf("%s %s present=%v, want %v", obj.kind, obj.name, got, present)
+		}
 	}
 }
