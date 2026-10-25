@@ -178,3 +178,16 @@ func isCode(err error, code string) bool {
 	var pqErr *pq.Error
 	return errors.As(err, &pqErr) && string(pqErr.Code) == code
 }
+
+// Roles accepted by the users table CHECK constraint (migration 002).
+var roles = []string{"admin", "manager", "dispatcher", "driver"}
+
+// ValidRole reports whether role is one of the four P2 roles.
+func ValidRole(role string) bool {
+	for _, r := range roles {
+		if r == role {
+			return true
+		}
+	}
+	return false
+}
