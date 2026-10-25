@@ -51,8 +51,9 @@ Run from the repo root. `make help` lists every target.
 - Pins: Go 1.27.3 (`go.mod` toolchain line); golangci-lint v2.15.0 and golang-migrate CLI v4.18.3 (built with `-tags postgres`) in the Makefile.
 - Host override: `deploy/.local/tools.mk` (gitignored) may set `GO`, `GOFMT`, `GOLANGCI_LINT`, `MIGRATE` to host paths. The Makefile includes it.
 - `make migrate` requires `DATABASE_URL` in the environment; it is not read from `deploy/.env`.
-- Local API: `DATABASE_URL=… JWT_SECRET=… DEVICE_KEY_SALT=… NATS_URL=nats://127.0.0.1:10004 go run ./services/api` listens on `127.0.0.1:10010` (`-addr` overrides). It does not run migrations.
-- Local ingest consumer: same env as the API, `DATABASE_URL=… JWT_SECRET=… DEVICE_KEY_SALT=… NATS_URL=nats://127.0.0.1:10004 go run ./services/ingest`. No listener; it drains `GPS_RAW` into `positions` and runs partition maintenance.
+- Local API: `DATABASE_URL=… JWT_SECRET=… DEVICE_KEY_SALT=… NATS_URL=nats://127.0.0.1:10004 REDIS_URL=redis://127.0.0.1:10003 go run ./services/api` listens on `127.0.0.1:10010` (`-addr` overrides). It does not run migrations.
+- Local ingest consumer: same env as the API, `DATABASE_URL=… JWT_SECRET=… DEVICE_KEY_SALT=… NATS_URL=nats://127.0.0.1:10004 REDIS_URL=redis://127.0.0.1:10003 go run ./services/ingest`. No listener; it drains `GPS_RAW` into `positions`, publishes to Redis, and runs partition maintenance.
+- Local WS hub: same env as the API, `DATABASE_URL=… JWT_SECRET=… DEVICE_KEY_SALT=… NATS_URL=nats://127.0.0.1:10004 REDIS_URL=redis://127.0.0.1:10003 go run ./services/ws-hub` listens on `127.0.0.1:10011` (`-addr` overrides). It does not connect to Postgres. Clients open `WS /stream?fleet=<id>` and send `{"type":"auth","token":…}` as the first frame.
 - `JWT_SECRET` must be at least 32 bytes or the API and `make seed` refuse to start; generate one per shell with `openssl rand -hex 32`.
 - `DEVICE_KEY_SALT` is required and must be at least 32 bytes, or the API refuses to start before it opens the database (GF-30). Generate one per shell with `openssl rand -hex 32`. It is the HMAC key for device keys (D-29) and license hashes (D-31).
 - **Salt rotation (GF-50):** changing `DEVICE_KEY_SALT` invalidates every device key and every license hash. P3 ships no re-keying tool.
@@ -90,3 +91,5 @@ Values come from the environment, like the names above. Unset or empty means the
 | `FLEETOPS_FLUSH_INTERVAL` | `1s` | Go duration from `100ms` to `10s` |
 | `FLEETOPS_FLUSH_MAX` | `500` | integer from `1` to `5000` |
 | `FLEETOPS_ACCURACY_MAX_M` | `50` | finite number above `0` and at most `10000` |
+| `FLEETOPS_WS_ROOM_CAP` | `2000` | integer from `1` to `10000` |
+| `FLEETOPS_PRESENCE_TTL` | `120s` | Go duration from `30s` to `600s` |
