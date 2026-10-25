@@ -21,6 +21,9 @@ const testPassword = "test password long enough"
 // testSecret is 32 bytes, the minimum (D-03). It is never a real secret.
 var testSecret = []byte(strings.Repeat("t", 32))
 
+// testSalt is 32 bytes, the minimum (GF-30). It is never a real secret.
+var testSalt = []byte(strings.Repeat("s", 32))
+
 type fakeClock struct{ t time.Time }
 
 func (c *fakeClock) now() time.Time { return c.t }
@@ -44,10 +47,11 @@ func startServer(t *testing.T) *harness {
 		t.Fatalf("NewIssuer: %v", err)
 	}
 	e := NewServer(Deps{
-		DB:       db,
-		Issuer:   iss,
-		Clock:    clk.now,
-		Throttle: auth.NewThrottle(clk.now),
+		DB:            db,
+		Issuer:        iss,
+		Clock:         clk.now,
+		Throttle:      auth.NewThrottle(clk.now),
+		DeviceKeySalt: testSalt,
 	})
 
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
