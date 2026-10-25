@@ -65,6 +65,7 @@ type Hub struct {
 	base     context.Context
 	opts     Options
 	counters Counters
+	active   sync.WaitGroup // one per upgraded connection, until its serve returns
 
 	mu    sync.Mutex
 	rooms map[int64]*room
@@ -116,5 +117,23 @@ func (h *Hub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// Accept has already written the refusal.
 		return
 	}
+	h.active.Add(1)
+	defer h.active.Done()
 	h.serve(ws, fleet)
+}
+
+// Wait blocks until every upgraded connection has ended, or ctx is done. Shutdown
+// calls it after it cancels the base context, so connections close with 1001 (GF-118).
+func (h *Hub) Wait(ctx context.Context) error {
+	done := make(chan struct{})
+	go func() {
+		h.active.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }

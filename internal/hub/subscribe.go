@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/nats-io/nats.go"
 	"github.com/redis/go-redis/v9"
@@ -34,6 +35,9 @@ type envelope struct {
 	FleetID  int64  `json:"fleet_id"`
 	DriverID *int64 `json:"driver_id"`
 }
+
+// subscribeTimeout bounds the NATS flush that confirms the subscriptions.
+const subscribeTimeout = 5 * time.Second
 
 // Subscriptions is one hub's Redis and NATS subscriptions (GF-108).
 type Subscriptions struct {
@@ -74,7 +78,9 @@ func (h *Hub) Subscribe(ctx context.Context, rdb *redis.Client, nc *nats.Conn) (
 		}
 		s.nsubs = append(s.nsubs, sub)
 	}
-	if err := nc.FlushWithContext(ctx); err != nil {
+	flushCtx, cancel := context.WithTimeout(ctx, subscribeTimeout)
+	defer cancel()
+	if err := nc.FlushWithContext(flushCtx); err != nil {
 		_ = s.Close()
 		return nil, fmt.Errorf("nats flush: %w", err)
 	}
