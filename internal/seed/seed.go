@@ -88,7 +88,7 @@ func Run(ctx context.Context, db *sql.DB, opts Options, pw PasswordSource) (Resu
 	}
 	// Policy runs before the hash and before any write (GF-23).
 	if err := auth.CheckPolicy(password); err != nil {
-		return Result{}, fmt.Errorf("%w: %v", ErrUsage, err)
+		return Result{}, fmt.Errorf("%w: %w", ErrUsage, err)
 	}
 	hash, err := auth.HashPassword(password)
 	if err != nil {

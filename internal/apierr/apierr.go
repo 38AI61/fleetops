@@ -9,7 +9,7 @@ import (
 
 // Codes returned to clients (GF-28).
 const (
-	InvalidCredentials = "invalid_credentials"
+	InvalidCredentials = "invalid_credentials" //nolint:gosec // error code string, not a credential
 	Unauthorized       = "unauthorized"
 	Forbidden          = "forbidden"
 	NotFound           = "not_found"

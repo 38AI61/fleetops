@@ -35,14 +35,14 @@ func TestRunRefusesMissingDatabaseURLWithExitTwo(t *testing.T) {
 }
 
 func TestReadLineSemantics(t *testing.T) {
-	if pw, err := readLine(strings.NewReader("correct horse battery\n")); err != nil || pw != "correct horse battery" {
-		t.Fatalf("LF line: %q %v", pw, err)
+	if got, err := readLine(strings.NewReader("correct horse battery\n")); err != nil || got != "correct horse battery" {
+		t.Fatalf("LF line: %q %v", got, err)
 	}
-	if pw, err := readLine(strings.NewReader("correct horse battery\r\n")); err != nil || pw != "correct horse battery" {
-		t.Fatalf("CRLF line: %q %v", pw, err)
+	if got, err := readLine(strings.NewReader("correct horse battery\r\n")); err != nil || got != "correct horse battery" {
+		t.Fatalf("CRLF line: %q %v", got, err)
 	}
-	if pw, err := readLine(strings.NewReader("no newline at end")); err != nil || pw != "no newline at end" {
-		t.Fatalf("unterminated line: %q %v", pw, err)
+	if got, err := readLine(strings.NewReader("no newline at end")); err != nil || got != "no newline at end" {
+		t.Fatalf("unterminated line: %q %v", got, err)
 	}
 }
 

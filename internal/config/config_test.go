@@ -15,13 +15,13 @@ func fakeEnv(env map[string]string) func(string) (string, bool) {
 func TestLoadAcceptsSecretOfExactlyMinimumLength(t *testing.T) {
 	secret := strings.Repeat("s", 32)
 	cfg, err := load(fakeEnv(map[string]string{
-		"DATABASE_URL": "postgres://u:p@h/db",
+		"DATABASE_URL": "postgres://fleetops@db.invalid/fleetops",
 		"JWT_SECRET":   secret,
 	}))
 	if err != nil {
 		t.Fatalf("32-byte secret: unexpected error %v", err)
 	}
-	if cfg.JWTSecret != secret || cfg.DatabaseURL != "postgres://u:p@h/db" {
+	if cfg.JWTSecret != secret || cfg.DatabaseURL != "postgres://fleetops@db.invalid/fleetops" {
 		t.Fatalf("config not loaded: %+v", cfg)
 	}
 }
@@ -29,7 +29,7 @@ func TestLoadAcceptsSecretOfExactlyMinimumLength(t *testing.T) {
 func TestLoadRefusesShortSecret(t *testing.T) {
 	secret := strings.Repeat("s", 31)
 	_, err := load(fakeEnv(map[string]string{
-		"DATABASE_URL": "postgres://u:p@h/db",
+		"DATABASE_URL": "postgres://fleetops@db.invalid/fleetops",
 		"JWT_SECRET":   secret,
 	}))
 	if err == nil {
@@ -55,7 +55,7 @@ func TestLoadRefusesMissingDatabaseURL(t *testing.T) {
 func TestLoadErrorNeverContainsSecret(t *testing.T) {
 	secret := "hunter2-not-long-enough"
 	_, err := load(fakeEnv(map[string]string{
-		"DATABASE_URL": "postgres://u:p@h/db",
+		"DATABASE_URL": "postgres://fleetops@db.invalid/fleetops",
 		"JWT_SECRET":   secret,
 	}))
 	if err == nil {

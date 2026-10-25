@@ -38,47 +38,47 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 
 	opts := seed.Options{AdminEmail: *adminEmail, FleetName: *fleetName, Timezone: *timezone}
 	if strings.TrimSpace(opts.AdminEmail) == "" {
-		fmt.Fprintln(stderr, "seed: --admin-email is required")
+		_, _ = fmt.Fprintln(stderr, "seed: --admin-email is required")
 		return 2
 	}
 	norm, err := seed.Validate(opts)
 	if err != nil {
-		fmt.Fprintf(stderr, "seed: %v\n", err)
+		_, _ = fmt.Fprintf(stderr, "seed: %v\n", err)
 		return 2
 	}
 
 	dsn := os.Getenv("DATABASE_URL")
 	if dsn == "" {
-		fmt.Fprintln(stderr, "seed: DATABASE_URL is required")
+		_, _ = fmt.Fprintln(stderr, "seed: DATABASE_URL is required")
 		return 2
 	}
 	db, err := sql.Open("postgres", dsn)
 	if err != nil {
-		fmt.Fprintf(stderr, "seed: open database: %v\n", err)
+		_, _ = fmt.Fprintf(stderr, "seed: open database: %v\n", err)
 		return 1
 	}
 	defer func() { _ = db.Close() }()
 
 	ctx := context.Background()
 	if err := db.PingContext(ctx); err != nil {
-		fmt.Fprintf(stderr, "seed: ping database: %v\n", err)
+		_, _ = fmt.Fprintf(stderr, "seed: ping database: %v\n", err)
 		return 1
 	}
 
 	res, err := seed.Run(ctx, db, opts, passwordSource(stdin, stderr))
 	if errors.Is(err, seed.ErrUsage) {
-		fmt.Fprintf(stderr, "seed: %v\n", err)
+		_, _ = fmt.Fprintf(stderr, "seed: %v\n", err)
 		return 2
 	}
 	if err != nil {
-		fmt.Fprintf(stderr, "seed: %v\n", err)
+		_, _ = fmt.Fprintf(stderr, "seed: %v\n", err)
 		return 1
 	}
 	if !res.Created {
-		fmt.Fprintln(stdout, "already seeded; no changes")
+		_, _ = fmt.Fprintln(stdout, "already seeded; no changes")
 		return 0
 	}
-	fmt.Fprintf(stdout, "seeded fleet %q (id %d) with admin %s (id %d)\n",
+	_, _ = fmt.Fprintf(stdout, "seeded fleet %q (id %d) with admin %s (id %d)\n",
 		norm.FleetName, res.FleetID, norm.AdminEmail, res.UserID)
 	return 0
 }
@@ -95,17 +95,17 @@ func passwordSource(stdin io.Reader, stderr io.Writer) seed.PasswordSource {
 }
 
 func promptTwice(f *os.File, stderr io.Writer) (string, error) {
-	fmt.Fprint(stderr, "Admin password: ")
+	_, _ = fmt.Fprint(stderr, "Admin password: ")
 	first, err := term.ReadPassword(int(f.Fd()))
-	fmt.Fprintln(stderr)
+	_, _ = fmt.Fprintln(stderr)
 	if err != nil {
-		return "", fmt.Errorf("%w: read password: %v", seed.ErrUsage, err)
+		return "", fmt.Errorf("%w: read password: %w", seed.ErrUsage, err)
 	}
-	fmt.Fprint(stderr, "Repeat password: ")
+	_, _ = fmt.Fprint(stderr, "Repeat password: ")
 	second, err := term.ReadPassword(int(f.Fd()))
-	fmt.Fprintln(stderr)
+	_, _ = fmt.Fprintln(stderr)
 	if err != nil {
-		return "", fmt.Errorf("%w: read password: %v", seed.ErrUsage, err)
+		return "", fmt.Errorf("%w: read password: %w", seed.ErrUsage, err)
 	}
 	if string(first) != string(second) {
 		return "", fmt.Errorf("%w: passwords do not match", seed.ErrUsage)
@@ -116,7 +116,7 @@ func promptTwice(f *os.File, stderr io.Writer) (string, error) {
 func readLine(stdin io.Reader) (string, error) {
 	line, err := bufio.NewReader(stdin).ReadString('\n')
 	if err != nil && !errors.Is(err, io.EOF) {
-		return "", fmt.Errorf("%w: read stdin: %v", seed.ErrUsage, err)
+		return "", fmt.Errorf("%w: read stdin: %w", seed.ErrUsage, err)
 	}
 	line = strings.TrimRight(line, "\r\n")
 	if line == "" {
