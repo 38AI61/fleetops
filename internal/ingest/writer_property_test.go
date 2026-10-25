@@ -99,8 +99,9 @@ func (f *propFixture) randomMessage(rt *rapid.T, withUnpaired bool) Message {
 
 // realistic snaps magnitudes below 1e-6 to zero. The DB properties write these
 // values through REAL columns (GF-77 casts float8 to real). Below about 1.4e-45
-// PostgreSQL raises "value out of range: underflow", so a sub-micro float that
-// passes validation would fail every flush it sits in. See the P5 step report.
+// PostgreSQL raises "value out of range: underflow". Validate rejects values
+// under 1e-45 at the edge (GF-85, validate.go); this snap keeps the generators
+// well inside that floor.
 func realistic(x float64) float64 {
 	if math.Abs(x) < 1e-6 {
 		return 0

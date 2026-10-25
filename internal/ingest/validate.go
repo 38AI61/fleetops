@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"math"
 	"net/http"
 	"strings"
 	"time"
@@ -25,6 +26,11 @@ const (
 
 	tsPastWindow   = 24 * time.Hour
 	tsFutureWindow = 5 * time.Minute
+
+	// minRealMagnitude is the smallest non-zero magnitude a REAL column
+	// accepts (GF-85). PostgreSQL rejects anything smaller on the float8 ->
+	// real cast, which would fail the whole flush.
+	minRealMagnitude = 1e-45
 )
 
 // ErrInvalidPosition is the sentinel every validation failure wraps.
@@ -105,15 +111,15 @@ func Validate(req PositionRequest, now time.Time) (Position, error) {
 	if err != nil {
 		return Position{}, err
 	}
-	speed, err := requireNumber("speed", req.Speed, minSpeed, maxSpeed)
+	speed, err := requireRealNumber("speed", req.Speed, minSpeed, maxSpeed)
 	if err != nil {
 		return Position{}, err
 	}
-	heading, err := requireNumber("heading", req.Heading, minHeading, maxHeading)
+	heading, err := requireRealNumber("heading", req.Heading, minHeading, maxHeading)
 	if err != nil {
 		return Position{}, err
 	}
-	accuracy, err := requireNumber("accuracy", req.Accuracy, minAccuracy, maxAccuracy)
+	accuracy, err := requireRealNumber("accuracy", req.Accuracy, minAccuracy, maxAccuracy)
 	if err != nil {
 		return Position{}, err
 	}
@@ -142,4 +148,17 @@ func requireNumber(field string, v *float64, lo, hi float64) (float64, error) {
 		return 0, &FieldError{Field: field}
 	}
 	return *v, nil
+}
+
+// requireRealNumber is requireNumber plus the REAL floor (GF-85): a non-zero
+// value below minRealMagnitude is rejected, zero is kept.
+func requireRealNumber(field string, v *float64, lo, hi float64) (float64, error) {
+	x, err := requireNumber(field, v, lo, hi)
+	if err != nil {
+		return 0, err
+	}
+	if x != 0 && math.Abs(x) < minRealMagnitude {
+		return 0, &FieldError{Field: field}
+	}
+	return x, nil
 }
