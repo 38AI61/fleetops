@@ -60,6 +60,10 @@ func TestMigrationFilesArePaired(t *testing.T) {
 	}
 }
 
+// dollarBody matches a dollar-quoted function body. PL/pgSQL bodies need
+// BEGIN/END, which is not transaction control, so the scan skips them.
+var dollarBody = regexp.MustCompile(`(?s)\$\$.*?\$\$`)
+
 func TestMigrationFilesAreTransactionSafe(t *testing.T) {
 	forbidden := regexp.MustCompile(`(?i)\b(BEGIN|COMMIT|CONCURRENTLY)\b`)
 
@@ -71,7 +75,8 @@ func TestMigrationFilesAreTransactionSafe(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		if m := forbidden.Find(body); m != nil {
+		scanned := dollarBody.ReplaceAll(body, nil)
+		if m := forbidden.Find(scanned); m != nil {
 			t.Errorf("%s contains forbidden keyword %q (GF-5)", path.Base(p), strings.ToUpper(string(m)))
 		}
 		return nil
