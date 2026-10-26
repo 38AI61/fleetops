@@ -19,6 +19,8 @@ import (
 
 	fleetdb "fleetops/db"
 	"fleetops/internal/auth"
+	"fleetops/internal/config"
+	"fleetops/internal/devicesfile"
 	"fleetops/internal/users"
 )
 
@@ -27,10 +29,16 @@ import (
 var ErrUsage = errors.New("usage")
 
 // Options are the seed inputs. Timezone is an IANA name such as "UTC".
+// DemoDevices adds the demo vehicles and tracker devices on first seed only
+// (GF-135). It needs DeviceKeySalt of at least config.MinDeviceKeySaltBytes.
+// DevicesPath defaults to devicesfile.DefaultPath.
 type Options struct {
-	AdminEmail string
-	FleetName  string
-	Timezone   string
+	AdminEmail    string
+	FleetName     string
+	Timezone      string
+	DemoDevices   bool
+	DeviceKeySalt []byte
+	DevicesPath   string
 }
 
 // PasswordSource returns the admin password. It is called only when a seed is
@@ -59,7 +67,22 @@ func Validate(opts Options) (Options, error) {
 	if _, err := time.LoadLocation(tz); err != nil {
 		return Options{}, fmt.Errorf("%w: --timezone %q is not a known IANA zone", ErrUsage, tz)
 	}
-	return Options{AdminEmail: users.NormalizeEmail(email), FleetName: name, Timezone: tz}, nil
+	// The salt check runs before any database work (GF-135).
+	if opts.DemoDevices && len(opts.DeviceKeySalt) < config.MinDeviceKeySaltBytes {
+		return Options{}, fmt.Errorf("%w: --demo-devices needs DEVICE_KEY_SALT of at least %d bytes", ErrUsage, config.MinDeviceKeySaltBytes)
+	}
+	path := opts.DevicesPath
+	if path == "" {
+		path = devicesfile.DefaultPath
+	}
+	return Options{
+		AdminEmail:    users.NormalizeEmail(email),
+		FleetName:     name,
+		Timezone:      tz,
+		DemoDevices:   opts.DemoDevices,
+		DeviceKeySalt: opts.DeviceKeySalt,
+		DevicesPath:   path,
+	}, nil
 }
 
 // Run seeds one fleet and one admin when fleets is empty. Concurrent runs are
@@ -128,7 +151,14 @@ func Run(ctx context.Context, db *sql.DB, opts Options, pw PasswordSource) (Resu
 	if err := tx.Commit(); err != nil {
 		return Result{}, fmt.Errorf("commit seed: %w", err)
 	}
-	return Result{Created: true, FleetID: fleetID, UserID: admin.ID}, nil
+	res := Result{Created: true, FleetID: fleetID, UserID: admin.ID}
+	if opts.DemoDevices {
+		// Demo devices run only in this branch, after the fleet commits (GF-135).
+		if err := RunDemo(ctx, db, res, opts.DeviceKeySalt, opts.DevicesPath, time.Now); err != nil {
+			return res, err
+		}
+	}
+	return res, nil
 }
 
 func fleetCount(ctx context.Context, db *sql.DB) (bool, error) {
