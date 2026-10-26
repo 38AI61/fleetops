@@ -8,9 +8,11 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"fleetops/internal/devicekey"
 )
 
-const testKey = "fo_dev_7_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+var testKey = devicekey.Format(7, []byte(strings.Repeat("k", 32)))
 
 // TestSendClassification: 204 is accepted, other 4xx is rejected, and 5xx or
 // a transport error is failed. No case panics or leaks the key (GF-146).
