@@ -26,6 +26,7 @@ const maxBodyBytes = "64K"
 // DeviceKeySalt is the HMAC key for device keys and license hashes (GF-30).
 // NATS and Gate back POST /ingest/position (P4).
 // PresenceTTL is the map offline threshold (FLEETOPS_PRESENCE_TTL, GF-132).
+// Events publishes jobs.events after each applied job transition (GF-179).
 type Deps struct {
 	DB            *sql.DB
 	Issuer        *auth.Issuer
@@ -35,6 +36,7 @@ type Deps struct {
 	NATS          jetstream.JetStream
 	Gate          *ingest.Gate
 	PresenceTTL   time.Duration
+	Events        jobs.Publisher
 }
 
 // NewServer returns the API with every P2, P3, P4, P8, and P10 route mounted.
@@ -65,7 +67,7 @@ func NewServer(d Deps) *echo.Echo {
 	rh := &registry.Handler{Svc: &registry.Service{DB: d.DB, Salt: d.DeviceKeySalt, Clock: d.Clock}}
 	rh.Register(e, auth.RequireAuth(d.Issuer))
 
-	jh := &jobs.Handler{Svc: &jobs.Store{DB: d.DB}}
+	jh := &jobs.Handler{Svc: &jobs.Store{DB: d.DB}, Events: d.Events}
 	jh.Register(e, auth.RequireAuth(d.Issuer))
 
 	mh := &mapview.Handler{DB: d.DB, Clock: d.Clock, PresenceTTL: d.PresenceTTL}

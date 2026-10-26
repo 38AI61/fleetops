@@ -11,11 +11,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
 
 	"fleetops/internal/auth"
 	"fleetops/internal/config"
 	"fleetops/internal/ingest"
+	"fleetops/internal/jobs"
 	"fleetops/internal/testinfra"
 	"fleetops/internal/users"
 )
@@ -41,12 +43,29 @@ type harness struct {
 	store  *users.Store
 	js     jetstream.JetStream
 	gate   *ingest.Gate
+	nc     *nats.Conn
 }
 
 // startServer serves the real API (NewServer) over HTTP and returns the harness.
+// Job events go to the harness's core NATS connection.
 func startServer(t *testing.T) *harness {
 	t.Helper()
+	return startServerEvents(t, nil)
+}
+
+// startServerEvents is startServer with a chosen jobs.events publisher. A nil
+// events publisher means the harness's own core NATS connection.
+func startServerEvents(t *testing.T, events jobs.Publisher) *harness {
+	t.Helper()
 	db := testinfra.NewMigratedDB(t)
+	nc, err := nats.Connect(testinfra.NATSURL(t))
+	if err != nil {
+		t.Fatalf("connect nats: %v", err)
+	}
+	t.Cleanup(nc.Close)
+	if events == nil {
+		events = nc
+	}
 	clk := &fakeClock{t: time.Date(2026, 10, 25, 12, 0, 0, 0, time.UTC)}
 	iss, err := auth.NewIssuer(testSecret, clk.now)
 	if err != nil {
@@ -66,6 +85,7 @@ func startServer(t *testing.T) *harness {
 		NATS:          js,
 		Gate:          gate,
 		PresenceTTL:   config.DefaultPresenceTTL,
+		Events:        events,
 	})
 
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
@@ -86,6 +106,7 @@ func startServer(t *testing.T) *harness {
 		store:  users.NewStore(db),
 		js:     js,
 		gate:   gate,
+		nc:     nc,
 	}
 }
 

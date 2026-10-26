@@ -34,7 +34,8 @@ const (
 // Handler serves the P10 dispatcher routes (GF-177). Every handler takes its
 // fleet and actor from the principal, never from the request (GF-27, GF-180).
 type Handler struct {
-	Svc *Store
+	Svc    *Store
+	Events Publisher
 }
 
 // Register mounts the job routes. authn is auth.RequireAuth for the
@@ -237,9 +238,12 @@ func (h *Handler) assign(c echo.Context) error {
 	if !ok {
 		return apierr.Write(c, http.StatusNotFound, apierr.NotFound)
 	}
-	ch, _, err := h.Svc.Assign(c.Request().Context(), p.UserID, p.FleetID, id, *in.VehicleID, *in.DriverID)
+	ch, out, err := h.Svc.Assign(c.Request().Context(), p.UserID, p.FleetID, id, *in.VehicleID, *in.DriverID)
 	if err != nil {
 		return writeErr(c, err)
+	}
+	if out == Applied {
+		publishChange(h.Events, ch)
 	}
 	return c.JSON(http.StatusOK, ch.Job)
 }
@@ -257,9 +261,12 @@ func (h *Handler) cancel(c echo.Context) error {
 	if !ok {
 		return apierr.Write(c, http.StatusNotFound, apierr.NotFound)
 	}
-	ch, _, err := h.Svc.Cancel(c.Request().Context(), p.UserID, p.FleetID, id)
+	ch, out, err := h.Svc.Cancel(c.Request().Context(), p.UserID, p.FleetID, id)
 	if err != nil {
 		return writeErr(c, err)
+	}
+	if out == Applied {
+		publishChange(h.Events, ch)
 	}
 	return c.JSON(http.StatusOK, ch.Job)
 }
