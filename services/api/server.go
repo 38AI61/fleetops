@@ -12,6 +12,7 @@ import (
 
 	"fleetops/internal/auth"
 	"fleetops/internal/ingest"
+	"fleetops/internal/jobs"
 	"fleetops/internal/mapview"
 	"fleetops/internal/registry"
 	"fleetops/internal/users"
@@ -36,7 +37,7 @@ type Deps struct {
 	PresenceTTL   time.Duration
 }
 
-// NewServer returns the API with every P2, P3, P4, and P8 route mounted.
+// NewServer returns the API with every P2, P3, P4, P8, and P10 route mounted.
 func NewServer(d Deps) *echo.Echo {
 	e := echo.New()
 	e.HideBanner = true
@@ -63,6 +64,9 @@ func NewServer(d Deps) *echo.Echo {
 
 	rh := &registry.Handler{Svc: &registry.Service{DB: d.DB, Salt: d.DeviceKeySalt, Clock: d.Clock}}
 	rh.Register(e, auth.RequireAuth(d.Issuer))
+
+	jh := &jobs.Handler{Svc: &jobs.Store{DB: d.DB}}
+	jh.Register(e, auth.RequireAuth(d.Issuer))
 
 	mh := &mapview.Handler{DB: d.DB, Clock: d.Clock, PresenceTTL: d.PresenceTTL}
 	mh.Register(e, auth.RequireAuth(d.Issuer))
