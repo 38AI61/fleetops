@@ -268,7 +268,7 @@ Run on this host (Docker available; compose is never started; PostGIS and NATS c
 4. Named tests, each run with `-race -count=1`, all PASS:
    - `go test ./internal/jobs -run 'TestTransitionEdges|TestJobTransitionsMirror|TestJobsTriggerRejectsInvalidUpdate|TestJobEventsAppendOnly|TestJobStoreTransitionD24|TestJobLookupPrecedence|TestTransitionProperty' -race -count=1`
    - `go test ./services/api -run 'TestJobsCreateValidation|TestJobsListFilters|TestJobsCrossFleet404|TestJobsAssignReplayAndReassign|TestJobsCancelReplay|TestJobsIllegalTransitionPersistsNothing|TestJobsConcurrentCancel|TestJobsPublishOnePerTransition|TestMapShowsJobState|TestRoleMatrix' -race -count=1`
-   - `go test ./db -run 'Roundtrip|Migrations' -race -count=1`
+   - `go test ./db -run 'Migration' -race -count=1` (amended: the names are `TestMigrationRoundTrip`, `TestMigrationFilesArePaired`, `TestMigrationFilesAreTransactionSafe`; the old pattern `Roundtrip|Migrations` matched none)
 5. Roadmap validation items, each with a pass condition:
    - Illegal transition → 409, zero rows persisted: `TestJobsIllegalTransitionPersistsNothing` passes (event count and job row unchanged).
    - Every successful transition has exactly one event: `TestTransitionProperty` invariant 2 passes; `TestJobsAssignReplayAndReassign` and `TestJobsCancelReplay` count events.
@@ -286,7 +286,7 @@ Run on this host (Docker available; compose is never started; PostGIS and NATS c
 | Integration (testcontainers PostGIS) | Trigger rejections by SQLSTATE (`FL409`, `FL428`, `23514`); `job_events` append-only (UPDATE/DELETE/TRUNCATE); mirror (DB rows == Go edges); D-24 store semantics; `MapLookup` precedence | `TestJobTransitionsMirror`, `TestJobsTriggerRejectsInvalidUpdate`, `TestJobEventsAppendOnly`, `TestJobStoreTransitionD24`, `TestJobLookupPrecedence` | `internal/jobs` |
 | services/api harness (real `NewServer`, loopback, NATS + PG) | Endpoint validation table; list filters incl. fleet timezone and NULL windows; cross-fleet 404; assign replay/reassign; cancel replay; illegal → 409 persisting nothing; concurrent cancel; NATS one-per-transition; map displays job state | `TestJobsCreateValidation`, `TestJobsListFilters`, `TestJobsCrossFleet404`, `TestJobsAssignReplayAndReassign`, `TestJobsCancelReplay`, `TestJobsIllegalTransitionPersistsNothing`, `TestJobsConcurrentCancel`, `TestJobsPublishOnePerTransition`, `TestMapShowsJobState` | `services/api` |
 | Role matrix (R-6) | Four new endpoints × five role columns | `TestRoleMatrix` (extended rows) | `services/api/rolematrix_test.go` |
-| Migration round trip | Up → down → up, version 9, new objects present/absent | `Roundtrip` (updated expectations), `Migrations` | `db` |
+| Migration round trip | Up → down → up, version 9, new objects present/absent | `TestMigrationRoundTrip` (updated expectations), `TestMigrationFilesArePaired` | `db` |
 | Race | Everything above under `-race` | `make test` | repo |
 
 ## SPEC-AMEND repeat
