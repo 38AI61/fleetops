@@ -80,7 +80,7 @@ Build order. Each group lists its tests; test names are binding.
 
 **G6 — Docs and validation.**
 - `CLAUDE.md`: mechanical rows only (GF-151).
-- Run the full validation list. No README, PORTS.md, compose, constitution, or `db/` edits.
+- Run the full validation list. No README, PORTS.md, compose, or constitution edits. `db/` edits are exactly the GF-134 set: the 008 migration pair and, forced by them, `db/roundtrip_test.go` (its version assertion moves 7 → 8 and it may assert the new index; nothing else in `db/` changes).
 
 ## Requirements
 
@@ -265,7 +265,7 @@ Runnable on this host (Docker available for testcontainers; compose is not start
 7. `TestPropInterpolatedPointsStayOnLeg`, `TestPropLegSpeedAndHeadingWithinBounds`, `TestPropEmitIntervalRespected` pass (rapid, default check count).
 8. `TestBBoxIndexScan` passes (index scan on `vehicles_latest_geom_planar_gix` in `EXPLAIN`).
 9. `TestDemoDevicesRerunIdempotent` and `TestDemoKeysAuthenticate` pass.
-10. Scope fence: `git diff --name-only main...HEAD` contains only paths under `internal/mapview/`, `internal/simulator/`, `internal/devicesfile/`, `internal/seed/`, `tools/seed/`, `tools/simulator/`, `services/api/`, `db/migrations/`, `CLAUDE.md`, and `specs/features/08-map-api-simulator.md`. It must not touch `README.md`, `deploy/docker-compose.yml`, `deploy/PORTS.md`, or `specs/constitution/`. (`prompts/` pointer files are committed as provenance per the ratified workflow and are not a fence violation.)
+10. Scope fence: `git diff --name-only main...HEAD` contains only paths under `internal/mapview/`, `internal/simulator/`, `internal/devicesfile/`, `internal/seed/`, `tools/seed/`, `tools/simulator/`, `services/api/`, `db/migrations/`, `db/roundtrip_test.go`, `CLAUDE.md`, and `specs/features/08-map-api-simulator.md`. It must not touch `README.md`, `deploy/docker-compose.yml`, `deploy/PORTS.md`, or `specs/constitution/`. (`prompts/` pointer files are committed as provenance per the ratified workflow and are not a fence violation.)
 11. Migration 008 exists and is exactly the planar index: `ls db/migrations | grep -c '^008'` prints `2` (one `.up.sql`, one `.down.sql`); `git diff main...HEAD -- db/migrations/008_vehicles_latest_planar_gix.up.sql` shows only the `CREATE INDEX` from GF-134; a migration round-trip (`008` down then up, or the round-trip test) passes.
 12. No go.mod change: `git diff main...HEAD -- go.mod go.sum` is empty.
 13. No secret committed: `git grep -nE 'fo_dev_[0-9]+_[A-Za-z0-9_-]{43}'` prints nothing; `git ls-files deploy/.local` prints nothing; `git check-ignore -v deploy/.local/devices.json` names `.gitignore:23`.
