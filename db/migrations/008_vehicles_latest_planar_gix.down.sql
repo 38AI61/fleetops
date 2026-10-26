@@ -1,0 +1,1 @@
+DROP INDEX vehicles_latest_geom_planar_gix;
