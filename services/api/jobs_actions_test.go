@@ -199,9 +199,11 @@ func TestJobsCancelReplay(t *testing.T) {
 		t.Fatalf("events on refused cancel = %d, want 4", n)
 	}
 
-	// Any field in the body is a 400.
-	if r := cancel(assigned, `{"x":1}`); r.status != http.StatusBadRequest || r.errCode(t) != "validation_failed" {
-		t.Fatalf("cancel with field = %d %s, want 400 validation_failed", r.status, r.body)
+	// Any field in the body is a 400, and so is null (GF-176: empty or {}).
+	for _, body := range []string{`{"x":1}`, `null`, `[]`} {
+		if r := cancel(assigned, body); r.status != http.StatusBadRequest || r.errCode(t) != "validation_failed" {
+			t.Fatalf("cancel with body %s = %d %s, want 400 validation_failed", body, r.status, r.body)
+		}
 	}
 }
 

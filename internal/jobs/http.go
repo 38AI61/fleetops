@@ -282,15 +282,18 @@ func bindStrict(c echo.Context, v any) error {
 	return nil
 }
 
-// bindEmptyObject accepts an empty body or {} and refuses any field (GF-176).
+// bindEmptyObject accepts an empty body or {} and refuses any field, and
+// refuses null (GF-176). A map decodes {} to a non-nil empty map and null to nil.
 func bindEmptyObject(c echo.Context) error {
 	dec := json.NewDecoder(c.Request().Body)
-	dec.DisallowUnknownFields()
-	var none struct{}
-	if err := dec.Decode(&none); err != nil {
+	var fields map[string]json.RawMessage
+	if err := dec.Decode(&fields); err != nil {
 		if errors.Is(err, io.EOF) {
 			return nil
 		}
+		return ErrValidation
+	}
+	if fields == nil || len(fields) > 0 {
 		return ErrValidation
 	}
 	return nil
