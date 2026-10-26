@@ -70,7 +70,7 @@ func NewServer(d Deps) *echo.Echo {
 	jh := &jobs.Handler{Svc: &jobs.Store{DB: d.DB}, Events: d.Events}
 	jh.Register(e, auth.RequireAuth(d.Issuer))
 
-	mh := &mapview.Handler{DB: d.DB, Clock: d.Clock, PresenceTTL: d.PresenceTTL}
+	mh := &mapview.Handler{DB: d.DB, Clock: d.Clock, PresenceTTL: d.PresenceTTL, Jobs: &jobs.MapLookup{DB: d.DB}}
 	mh.Register(e, auth.RequireAuth(d.Issuer))
 
 	// Device route: no JWT group (GF-64). The device key is checked inside the handler.
