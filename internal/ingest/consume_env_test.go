@@ -9,6 +9,7 @@ import (
 	"github.com/nats-io/nats.go/jetstream"
 	"github.com/prometheus/client_golang/prometheus"
 
+	"fleetops/internal/fanout"
 	"fleetops/internal/testinfra"
 )
 
@@ -48,7 +49,7 @@ func newLoopEnv(t testing.TB, spec consumerSpec, flushMax int) *loopEnv {
 	reg := prometheus.NewRegistry()
 	m := NewMetrics(reg)
 	buf := NewBuffer(time.Second, flushMax, 50, fe.counters)
-	cons := NewConsumer(js, buf, fe.writer, m, time.Now)
+	cons := NewConsumer(js, buf, fe.writer, m, time.Now, &Publisher{Fanout: fanout.Nop{}, Tracker: nopTracker{}, Metrics: m})
 	cons.spec = spec
 
 	vehicleID, deviceID := fe.pairedVehicle(0)

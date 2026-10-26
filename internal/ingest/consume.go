@@ -168,6 +168,7 @@ type Consumer struct {
 	w     *Writer
 	m     *Metrics
 	clock Clock
+	pub   *Publisher
 	spec  consumerSpec
 	seams seams
 
@@ -176,9 +177,10 @@ type Consumer struct {
 	offered int
 }
 
-// NewConsumer returns a consumer with the GF-86 production spec.
-func NewConsumer(js jetstream.JetStream, buf *Buffer, w *Writer, m *Metrics, clock Clock) *Consumer {
-	return &Consumer{js: js, buf: buf, w: w, m: m, clock: clock, spec: defaultConsumerSpec()}
+// NewConsumer returns a consumer with the GF-86 production spec. Every flush
+// hands its stored messages to pub after commit (GF-103).
+func NewConsumer(js jetstream.JetStream, buf *Buffer, w *Writer, m *Metrics, clock Clock, pub *Publisher) *Consumer {
+	return &Consumer{js: js, buf: buf, w: w, m: m, clock: clock, pub: pub, spec: defaultConsumerSpec()}
 }
 
 // EnsureConsumer creates or updates the durable pull consumer with the GF-86
@@ -343,6 +345,9 @@ func (c *Consumer) flush(ctx context.Context, batch []Message, raws []jetstream.
 	c.m.MessagesTotal.WithLabelValues("stored").Add(float64(len(res.Stored)))
 	c.m.MessagesTotal.WithLabelValues("stale").Add(float64(res.Stale))
 	c.m.MessagesTotal.WithLabelValues("unpaired").Add(float64(res.Unpaired))
+
+	// The batch is committed, so a published point is durable (GF-103).
+	c.pub.Publish(ctx, res.Stored)
 
 	if c.seams.beforeAck != nil {
 		c.seams.beforeAck(batch)

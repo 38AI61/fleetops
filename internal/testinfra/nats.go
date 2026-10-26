@@ -122,3 +122,10 @@ func FetchSubject(t testing.TB, js jetstream.JetStream, stream, subject string, 
 	}
 	return got
 }
+
+// NATSURL returns the client URL of the shared NATS server, starting it on first
+// use. Core-NATS tests use it without JetStream (GF-122).
+func NATSURL(t testing.TB) string {
+	t.Helper()
+	return sharedNATSURL(t)
+}
