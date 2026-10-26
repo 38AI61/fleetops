@@ -104,6 +104,12 @@ func TestRoleMatrix(t *testing.T) {
 			return `{"model":"Ford Transit"}`
 		}, [5]int{ok200, ok200, forb, forb, unau}},
 
+		// GF-126: any role reads its own fleet's map; no credential gets 401.
+		// The bbox is a city-sized viewport: wide boxes hit the geography
+		// predicate problem recorded in the P8 report, which is not this row's concern.
+		{"GET /map/vehicles", http.MethodGet, "/map/vehicles?bbox=13.30,52.45,13.50,52.60", func(int) string { return "" },
+			[5]int{ok200, ok200, ok200, ok200, unau}},
+
 		{"GET /drivers", http.MethodGet, "/drivers", func(int) string { return "" }, [5]int{ok200, ok200, ok200, ok200, unau}},
 		{"GET /drivers/:id (own id for driver)", http.MethodGet, driverPath, func(int) string { return "" }, [5]int{ok200, ok200, ok200, ok200, unau}},
 		{"POST /drivers", http.MethodPost, "/drivers", func(n int) string {
