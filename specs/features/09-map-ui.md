@@ -243,8 +243,8 @@ The GF-130 response has no plate, model, or name. The card makes no extra fetch 
 - Proactive reconnect at `expiresAt − 60 s`: open a new socket, auth it, and on its `auth.ok` close the old socket with 1000. *Why:* D-21 closes at `exp` with 4401, and mid-session re-auth is not a protocol feature (a second frame closes the socket with 1008). A new socket avoids a visible gap.
 
 **GF-163 — Reducer signature, cache merge, dedupe.**
-- Signature: `reduceWsEvent(state: WsState, raw: string, index: {deviceToVehicle: Map<number, number>}) → {state: WsState, rows: VehicleRow[] | null, effects: Array<'refetch-map' | 'refetch-vehicles'>}`. Pure. `rows` is the full next array for the active bbox key, or `null` when nothing changed.
-- `WsState` = `{connected: boolean, seen: Set<string>, seenOrder: string[]}`. `seen` is a bounded ring of the last 10,000 `msg_id` values. Eviction is FIFO.
+- Signature: `reduceWsEvent(state: WsState, raw: string, index: {deviceToVehicle: Map<number, number>}, rows: VehicleRow[]) → {state: WsState, rows: VehicleRow[] | null, effects: Array<'refetch-map' | 'refetch-vehicles'>}`. Pure. `rows` is the current array for the active bbox key (the caller passes it in). The return `rows` is the full next array, or `null` when nothing changed. *(Amended 2026-10-26 at the implement self-gate: the original signature had no way to read the current rows, so the output could not be built; `rows` is the mechanical fix.)*
+- `WsState` = `{connected: boolean, fleetId: number, seen: Set<string>, seenOrder: string[]}`. `fleetId` is the connected fleet, which the `position.batch` fleet check in this section needs. *(Amended 2026-10-26 at the implement self-gate: the fleet check had no fleet to compare against.)* `seen` is a bounded ring of the last 10,000 `msg_id` values. Eviction is FIFO.
 - `auth.ok`: `connected = true`.
 - `position.batch`: ignore if `fleet_id` does not match the connected fleet. Otherwise, for each point in array order:
   1. Skip if `msg_id` is in `seen` (at-least-once replay, GF-103). Otherwise add it to `seen`.
@@ -253,7 +253,7 @@ The GF-130 response has no plate, model, or name. The card makes no extra fetch 
   4. Write `lat, lng, speed_kmh, heading_deg, device_ts, server_ts`. Status: if the row was `offline`, set `idle` (a fresh point revives it). Otherwise keep the status. `en_route` is only corrected by the server on refetch, since the client has no job state.
   5. After the loop, if any row changed, add `refetch-map` (debounced 2 s in the client) to reconcile status with the server.
 - Atomicity: the whole batch (≤ 200 points, GF-102) is applied in one pure call, then one `setQueryData` write. One render per batch. A batch over 200 is still applied (the client does not reject).
-- Cache write: `queryClient.setQueryData(['map-vehicles', activeBboxKey], rows)`. Only the active bbox key is patched. Rows outside the active box are not in the cache and are not added.
+- Cache write: `queryClient.setQueryData(['map-vehicles', activeBboxKey], prev => ({...prev, vehicles: rows}))`. The cached value is the GF-130 result `{vehicles, truncated}`, so `truncated` survives a merge. *(Amended 2026-10-26 at the implement self-gate: the cache holds the full result, not a bare array.)* Only the active bbox key is patched. Rows outside the active box are not in the cache and are not added.
 - `presence.changed`: no row mutation. Add `refetch-map` (debounced 1 s). See GF-164.
 - Unknown `type` (`job.updated`, `alert.raised`, anything else), malformed JSON, or non-object: return the state unchanged with no effects and no throw. *Why:* P10/P11 add those types; P9 must tolerate them.
 

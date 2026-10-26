@@ -1,8 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import type { VehicleRow } from '../api/types'
 import { logout } from '../auth/logout'
+import { getAuthState } from '../auth/session'
 import { VehicleCard } from '../details/VehicleCard'
 import { toFeatureCollection, type VehicleCollection } from '../status/display'
+import { ConnectionBadge } from '../ws/ConnectionBadge'
+import { startLiveFeed } from '../ws/client'
 import { MapView, type InteractionEvent } from './MapView'
 import { bboxParam } from './bbox'
 import { followCenter, nextFollowId, type FollowEvent } from './follow'
@@ -13,7 +17,16 @@ const WORLD_BBOX = bboxParam({ west: -180, south: -90, east: 180, north: 90 })
 const NO_VEHICLES: never[] = []
 
 export function MapPage() {
+  const queryClient = useQueryClient()
   const [bbox, setBbox] = useState(WORLD_BBOX)
+  const fleetId = getAuthState().session?.claims.fleet_id ?? null
+
+  // One live feed per mounted map. Unmount (logout or route change) stops it.
+  useEffect(() => {
+    if (fleetId === null) return
+    return startLiveFeed(queryClient, fleetId)
+  }, [queryClient, fleetId])
+
   const query = useMapVehicles(bbox)
   const tick = Math.floor(useNow(1000) / 1000)
   const vehicles = query.data?.vehicles ?? NO_VEHICLES
@@ -73,6 +86,7 @@ export function MapPage() {
     <div className="map-page">
       <header className="topbar">
         <span className="title">Operations map</span>
+        <ConnectionBadge />
         <button type="button" onClick={() => void logout()}>
           Log out
         </button>
