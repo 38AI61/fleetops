@@ -5,7 +5,7 @@ Source plan: `/root/.claude/plans/p8-plan-cozy-sphinx.md` (approved, self-gate a
 
 This spec is written before any P8 code (R-1, SDD). Implementation starts at Plan task group G0.
 
-Ready to persist verbatim as `specs/features/08-map-api-simulator.md`. Decisions GF-126 onward are new in P8. Nothing here edits README, PORTS.md, compose, the constitution, or `db/`.
+Ready to persist verbatim as `specs/features/08-map-api-simulator.md`. Decisions GF-126 onward are new in P8. Nothing here edits README, PORTS.md, compose, or the constitution. (GF-128 and GF-134 were amended 2026-10-26 at the implement self-gate: the bbox predicate is planar over a new expression index, which is migration 008 — see those decisions.)
 
 ## Scope
 
@@ -36,7 +36,7 @@ Build order. Each group lists its tests; test names are binding.
   - `TestDeriveStatusOfflineEdge` (fake clock; subtests `fresh`, `exactly_120s_not_offline`, `120s_plus_1ns_offline`, `negative_skew_not_offline`).
   - `TestDeriveStatusPrecedence` (offline beats `en_route`; `en_route`/`picked_up` → `en_route`; other → `idle`; TTL 30s and 600s bounds respected).
   - `TestBBoxQueryFixture` (integration, PostGIS testcontainer: in-box, out-of-box, other fleet in-box, and empty result; vehicles kept ≥100 m off box edges, see GF-128).
-  - `TestBBoxIndexScan` (integration: `EXPLAIN` with `enable_seqscan=off` contains `vehicles_latest_geom_gix`).
+  - `TestBBoxIndexScan` (integration: `EXPLAIN` with `enable_seqscan=off` contains `vehicles_latest_geom_planar_gix`).
   - `TestMapVehiclesAuth` (no token → 401; device key in `X-Device-Key` with no JWT → 401; each of admin, manager, dispatcher, driver → 200).
   - `TestMapVehiclesResponseShape` (field names, types, RFC3339 UTC ms, `truncated`, empty array not null).
   - `TestMapVehiclesTruncation` (1001 rows → 1000 returned, `truncated=true`).
@@ -102,16 +102,17 @@ Build order. Each group lists its tests; test names are binding.
 
 **GF-127 — Bbox grammar and rejection.** Query parameter `bbox`, exactly one occurrence, value `minLng,minLat,maxLng,maxLat` (GeoJSON and MapLibre order), four decimal numbers separated by commas, no whitespace. Parsed with `strconv.ParseFloat(_, 64)`. Each value must be finite. Constraints: `-180 ≤ minLng < maxLng ≤ 180` and `-90 ≤ minLat < maxLat ≤ 90`. Rejected with `400 validation_failed` (apierr): missing, duplicated, empty, wrong arity, non-numeric, `NaN`/`Inf`, out of range, zero-area (`minLng == maxLng` or `minLat == maxLat`), inverted (`minLng > maxLng`, which includes antimeridian-crossing boxes). Antimeridian-crossing boxes are not supported; the client splits them into two calls. *Why:* one strict grammar keeps the handler a pure function. Zero-area boxes never come from a real viewport. Errors never echo the value (matches ingest's `FieldError` style).
 
-**GF-128 — SQL predicate and index.** Single query:
+**GF-128 — SQL predicate and index.** *(Amended 2026-10-26 at implement self-gate: the original geography-typed predicate was proven wrong on this host against `postgis/postgis:16-3.4` — `ST_MakeEnvelope(-180,-90,180,90,4326)::geography` raises `ERROR: Antipodal (180 degrees long) edge detected!` (whole-world bbox → 500), and for a wide box `ST_MakeEnvelope(-90,30,90,70,4326)::geography` returns false for a point (13.4, 52.5) inside it (silent wrong answer). The amended predicate is planar, which is exact for point-vs-envelope and serves wide boxes correctly; it is index-driven through the new expression index from GF-134, verified via `EXPLAIN` showing an index scan on it.)* Single query:
 ```sql
 SELECT vehicle_id, ST_Y(geom::geometry), ST_X(geom::geometry), speed_kmh, heading_deg, device_ts, server_ts
 FROM vehicles_latest
 WHERE fleet_id = $1
-  AND ST_Intersects(geom, ST_MakeEnvelope($2, $3, $4, $5, 4326)::geography)
+  AND geom::geometry && ST_MakeEnvelope($2, $3, $4, $5, 4326)
+  AND ST_Covers(ST_MakeEnvelope($2, $3, $4, $5, 4326), geom::geometry)
 ORDER BY vehicle_id
 LIMIT $6
 ```
-`$2..$5` are `minLng, minLat, maxLng, maxLat`; `$6` is the cap plus one (GF-129). `ST_Intersects` on `geography` uses the `vehicles_latest_geom_gix` GIST index; `fleet_id = $1` uses `vehicles_latest_fleet_idx`. **Semantics:** edges are geodesic, as PostGIS computes them for a geography polygon. A geodesic north or south edge bows toward the pole by a sagitta of about 5 m for a 0.2° span at lat 52, growing with span. A point within that sagitta of an edge may classify differently from a planar box. Fixtures keep vehicles at least 100 m from every edge. *Why:* the geography predicate is the only form that is both index-driven and a single expression; a planar `geom::geometry && env` form would seq-scan. Fallback if `TestBBoxIndexScan` fails: `geom && ST_MakeEnvelope(...)::geography AND ST_Intersects(geom, ...)`, same semantics, still no migration.
+`$2..$5` are `minLng, minLat, maxLng, maxLat`; `$6` is the cap plus one (GF-129). The `&&` bound uses the `vehicles_latest_geom_planar_gix` expression GIST index (GF-134); `fleet_id = $1` uses `vehicles_latest_fleet_idx`; `ST_Covers` is the exact refinement. **Semantics:** planar rectangle containment in EPSG:4326 degrees. For point geometries this is unambiguous — a point is a degenerate rectangle, so the geodesic-edge sagitta problem of the geography type cannot arise. Boxes wider than 180° of longitude are still rejected by the GF-127 grammar (`minLng < maxLng`); a whole-world bbox (`-180,-90,180,90`) is valid and correct under this predicate. *Why:* correctness for every grammar-valid box beats geodesic edge fidelity at sub-metre scale; the fixture vehicles stay ≥100 m off edges anyway (now a belt-and-braces margin, not a semantic caveat).
 
 **GF-129 — Result cap.** At most 1000 vehicles per response, ordered by `vehicle_id`. The query asks for 1001 rows; a 1001st row sets `truncated: true` and is dropped. *Why:* bounds response size for a whole-world bbox over a large fleet; P9 can tighten the bbox to see the rest.
 
@@ -160,7 +161,11 @@ type JobLookup interface {
 ```
 P8 wires `noJobLookup`, which returns an empty map. So every fresh vehicle derives `idle` and no job data is invented. `JobState` constants exist now because they are the D-27 vocabulary. **P10 follow-up:** implement `JobLookup` over the P10 jobs tables (§6.3 `job_transitions` and the jobs state) and wire it in `services/api`; the map handler does not change. Tests use a fake `JobLookup` to prove the seam (`TestMapVehiclesEnRouteFromLookup`). The seam is a test double of our own interface, not a mock of infrastructure. *Why:* honest about the missing jobs table; no fake job rows; the P10 change is one implementation.
 
-**GF-134 — No migration in P8.** `vehicles_latest` (007) already holds every read column: `vehicle_id`, `fleet_id`, `geom`, `speed_kmh`, `heading_deg`, `device_ts`, `server_ts`, with the GIST and fleet indexes. `008` is not created. Changes that would legitimately reopen this: a map field that `vehicles_latest` lacks (for example registry `status` or plate, which need a join, not a migration), or a predicate change that GF-128's index test rejects with no working fallback. The only tables read are `vehicles_latest`; no jobs table is read.
+**GF-134 — Migration 008: planar expression index on `vehicles_latest`.** *(Amended 2026-10-26 at implement self-gate: GF-128's corrected planar predicate needs an index over `(geom::geometry)`; the original text forbidding a migration reserved exactly this case — "a predicate change that GF-128's index test rejects with no working fallback" — and the geography form was proven to reject wide boxes with no working fallback. This is the legitimate reopening the original text anticipated.)* Migration `008_vehicles_latest_planar_gix.up.sql` adds:
+```sql
+CREATE INDEX vehicles_latest_geom_planar_gix ON vehicles_latest USING GIST ((geom::geometry));
+```
+with the matching `.down.sql` dropping it. One index, no `BEGIN`/`COMMIT`, no `CONCURRENTLY`, sequential number after 007 (GF-5). `008` exists for this index only; `vehicles_latest` columns are unchanged and no other table is touched. The only tables read remain `vehicles_latest`; no jobs table is read.
 
 **GF-135 — Demo-devices gating (D-05).** `tools/seed --demo-devices` is a bool flag. It runs only in the first-seed branch, when `fleets` is empty and `Run` creates the fleet (`Created == true`). On an already-seeded DB it is a no-op: exit 0, a stderr note that the flag applies only on first seed, and `devices.json` is not rewritten. Keys are shown once and cannot be recovered, so a rerun must not rewrite them. Adding demo devices to an existing DB is not supported in P8; reset the DB. The flag requires `DEVICE_KEY_SALT` (≥32 bytes); missing or short → usage error, exit 2, before any DB write. *Why:* preserves D-05's idempotence exactly and keeps the file consistent with the DB.
 
@@ -258,10 +263,10 @@ Runnable on this host (Docker available for testcontainers; compose is not start
 5. `TestSimulatorSustainsConfiguredRate` passes: 4 vehicles, rate 250 ms, window 3 s; per-vehicle accepted count within ±2 of `floor(3s/250ms) = 12`; aggregate ≥ 95%; no skipped slots. **Roadmap Validation item.**
 6. `TestDeriveStatusOfflineEdge` passes, with subtests `fresh`, `exactly_120s_not_offline`, `120s_plus_1ns_offline`. **120 s edge test.**
 7. `TestPropInterpolatedPointsStayOnLeg`, `TestPropLegSpeedAndHeadingWithinBounds`, `TestPropEmitIntervalRespected` pass (rapid, default check count).
-8. `TestBBoxIndexScan` passes (GIST index in `EXPLAIN`).
+8. `TestBBoxIndexScan` passes (index scan on `vehicles_latest_geom_planar_gix` in `EXPLAIN`).
 9. `TestDemoDevicesRerunIdempotent` and `TestDemoKeysAuthenticate` pass.
-10. Scope fence: `git diff --name-only main...HEAD` contains only paths under `internal/mapview/`, `internal/simulator/`, `internal/devicesfile/`, `internal/seed/`, `tools/seed/`, `tools/simulator/`, `services/api/`, `CLAUDE.md`, and `specs/features/08-map-api-simulator.md`. It must not touch `README.md`, `deploy/docker-compose.yml`, `deploy/PORTS.md`, `specs/constitution/`, or `db/`.
-11. No migration: `ls db/migrations | grep -c '^008'` prints `0`.
+10. Scope fence: `git diff --name-only main...HEAD` contains only paths under `internal/mapview/`, `internal/simulator/`, `internal/devicesfile/`, `internal/seed/`, `tools/seed/`, `tools/simulator/`, `services/api/`, `db/migrations/`, `CLAUDE.md`, and `specs/features/08-map-api-simulator.md`. It must not touch `README.md`, `deploy/docker-compose.yml`, `deploy/PORTS.md`, or `specs/constitution/`. (`prompts/` pointer files are committed as provenance per the ratified workflow and are not a fence violation.)
+11. Migration 008 exists and is exactly the planar index: `ls db/migrations | grep -c '^008'` prints `2` (one `.up.sql`, one `.down.sql`); `git diff main...HEAD -- db/migrations/008_vehicles_latest_planar_gix.up.sql` shows only the `CREATE INDEX` from GF-134; a migration round-trip (`008` down then up, or the round-trip test) passes.
 12. No go.mod change: `git diff main...HEAD -- go.mod go.sum` is empty.
 13. No secret committed: `git grep -nE 'fo_dev_[0-9]+_[A-Za-z0-9_-]{43}'` prints nothing; `git ls-files deploy/.local` prints nothing; `git check-ignore -v deploy/.local/devices.json` names `.gitignore:23`.
 14. CLAUDE.md scope: `wc -l CLAUDE.md` < 200; `git diff --numstat main...HEAD -- CLAUDE.md` shows zero deletions.
@@ -294,4 +299,4 @@ No new SPEC-AMEND in P8. mission §7 is unchanged. Repeated as binding: GF-12 (P
 - Demo drivers, demo alerts, and seeded positions history.
 - Adding demo devices to an existing DB (GF-135).
 - Antimeridian-crossing bbox support (GF-127).
-- Any README, PORTS.md, compose, constitution, or migration edit.
+- Any README, PORTS.md, compose, or constitution edit. (Migration 008 is in scope per GF-134 as amended.)
