@@ -99,7 +99,7 @@ Values come from the environment, like the names above. Unset or empty means the
 
 ## Frontend (P9)
 
-- Install: `npm --prefix apps/web ci`
+- Install: `npm --prefix apps/web ci --include=dev`
 - Dev server: `npm --prefix apps/web run dev` → `http://localhost:10012` (`http://127.0.0.1:10012`)
 - Build (typecheck + build): `npm --prefix apps/web run build`
 - Typecheck only: `npm --prefix apps/web run typecheck`
