@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"fleetops/internal/jobs"
 	"fleetops/internal/registry"
 )
 
@@ -66,6 +67,20 @@ func TestRoleMatrix(t *testing.T) {
 	revokeDev, err := svc.IssueDevice(ctx, admin, registry.KindTracker)
 	if err != nil {
 		t.Fatalf("fixture device: %v", err)
+	}
+
+	// freshJob creates a created job in the admin's fleet and returns the path for action.
+	freshJob := func(action string) func() string {
+		return func() string {
+			job, err := (&jobs.Store{DB: h.db}).Create(ctx, ids["admin"], fleet, jobs.NewJob{
+				Pickup:  jobs.Point{Lat: 41.0, Lng: 29.0},
+				Dropoff: jobs.Point{Lat: 41.1, Lng: 29.1},
+			})
+			if err != nil {
+				t.Fatalf("fixture job: %v", err)
+			}
+			return fmt.Sprintf("/jobs/%d/%s", job.ID, action)
+		}
 	}
 
 	const (
@@ -137,16 +152,37 @@ func TestRoleMatrix(t *testing.T) {
 		// Revoke comes after rotate: rotate needs a live device.
 		{"POST /devices/:id/revoke", http.MethodPost, fmt.Sprintf("/devices/%d/revoke", revokeDev.ID), func(int) string { return "" },
 			[5]int{ok200, forb, forb, forb, unau}},
+
+		// P10 job rows (GF-177). Each row with a job id starts from a fresh created job.
+		{"POST /jobs", http.MethodPost, "/jobs", func(int) string {
+			return `{"pickup":{"lat":41.0,"lng":29.0},"dropoff":{"lat":41.1,"lng":29.1}}`
+		}, [5]int{ok201, forb, ok201, forb, unau}},
+		{"GET /jobs", http.MethodGet, "/jobs", func(int) string { return "" }, [5]int{ok200, ok200, ok200, forb, unau}},
+		{"POST /jobs/:id/assign", http.MethodPost, "/jobs/0/assign", func(int) string {
+			return fmt.Sprintf(`{"vehicle_id":%d,"driver_id":%d}`, vehicle.ID, driver.ID)
+		}, [5]int{ok200, forb, ok200, forb, unau}},
+		{"POST /jobs/:id/cancel", http.MethodPost, "/jobs/0/cancel", func(int) string { return "" },
+			[5]int{ok200, forb, ok200, forb, unau}},
+	}
+
+	// jobRowSetup gives each job row a fresh created job, so every row starts from the same state.
+	jobRowSetup := map[string]func() string{
+		"POST /jobs/:id/assign": freshJob("assign"),
+		"POST /jobs/:id/cancel": freshJob("cancel"),
 	}
 
 	seq := 0 // gives each POST a unique email, plate, or license
 	for _, row := range rows {
+		path := row.path
+		if setup, ok := jobRowSetup[row.name]; ok {
+			path = setup()
+		}
 		for i, c := range roleCols {
 			seq++
 			// Bodies are built here, outside the subtest, so a fixture failure is a fatal on t.
 			body := row.body(seq)
 			t.Run(row.name+"/"+c.name, func(t *testing.T) {
-				r := h.do(t, row.method, row.path, tokens[c.role], body, nil)
+				r := h.do(t, row.method, path, tokens[c.role], body, nil)
 				if r.status != row.want[i] {
 					t.Fatalf("status = %d (%s), want %d", r.status, r.body, row.want[i])
 				}
