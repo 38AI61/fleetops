@@ -1,0 +1,95 @@
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  font-family: system-ui, sans-serif;
+}
+
+.map-page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 1rem;
+  border-bottom: 1px solid #d1d5db;
+}
+
+.map-canvas {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+}
+
+.banner {
+  margin: 0;
+  padding: 0.5rem 1rem;
+  background: #fef3c7;
+}
+
+.vehicle-card {
+  position: absolute;
+  top: 4rem;
+  right: 1rem;
+  width: 18rem;
+  padding: 1rem;
+  background: #ffffff;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.15);
+  z-index: 1;
+}
+
+.vehicle-card .card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.vehicle-card h2 {
+  font-size: 1rem;
+  margin: 0;
+}
+
+.vehicle-card dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.25rem 0.75rem;
+  margin: 0.75rem 0;
+  font-size: 0.875rem;
+}
+
+.vehicle-card dt {
+  color: #6b7280;
+}
+
+.vehicle-card dd {
+  margin: 0;
+}
+
+.stale-badge {
+  display: inline-block;
+  padding: 0.125rem 0.5rem;
+  border-radius: 4px;
+  background: #9ca3af;
+  color: #ffffff;
+  font-size: 0.75rem;
+}
+
+.note {
+  margin: 0.5rem 0;
+  font-size: 0.875rem;
+  color: #6b7280;
+}
+
+.ws-badge {
+  font-size: 0.875rem;
+  padding: 0.125rem 0.5rem;
+  border: 1px solid #9ca3af;
+  border-radius: 4px;
+}

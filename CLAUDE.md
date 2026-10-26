@@ -96,3 +96,12 @@ Values come from the environment, like the names above. Unset or empty means the
 | `FLEETOPS_ACCURACY_MAX_M` | `50` | finite number above `0` and at most `10000` |
 | `FLEETOPS_WS_ROOM_CAP` | `2000` | integer from `1` to `10000` |
 | `FLEETOPS_PRESENCE_TTL` | `120s` | Go duration from `30s` to `600s` |
+
+## Frontend (P9)
+
+- Install: `npm --prefix apps/web ci --include=dev`
+- Dev server: `npm --prefix apps/web run dev` → `http://localhost:10012` (`http://127.0.0.1:10012`)
+- Build (typecheck + build): `npm --prefix apps/web run build`
+- Typecheck only: `npm --prefix apps/web run typecheck`
+- Unit and component tests: `npm --prefix apps/web test`
+- Dev proxy: `/auth`, `/map`, `/vehicles` → `127.0.0.1:10010`; `/stream` → `127.0.0.1:10011` (WebSocket)
