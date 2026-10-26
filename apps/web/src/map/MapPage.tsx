@@ -1,5 +1,7 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import type { VehicleRow } from '../api/types'
 import { logout } from '../auth/logout'
+import { VehicleCard } from '../details/VehicleCard'
 import { toFeatureCollection, type VehicleCollection } from '../status/display'
 import { MapView } from './MapView'
 import { bboxParam } from './bbox'
@@ -21,6 +23,21 @@ export function MapPage() {
     [vehicles, tick],
   )
 
+  // The card keeps the last snapshot while the selected vehicle is in view,
+  // and after it leaves the data set (GF-159).
+  const [selection, setSelection] = useState<{ id: number; snap: VehicleRow } | null>(null)
+  const live = selection ? vehicles.find((v) => v.vehicle_id === selection.id) : undefined
+  useEffect(() => {
+    if (selection && live && live !== selection.snap) {
+      setSelection({ id: selection.id, snap: live })
+    }
+  }, [selection, live])
+
+  function onSelect(vehicleId: number) {
+    const row = vehicles.find((v) => v.vehicle_id === vehicleId)
+    if (row) setSelection({ id: vehicleId, snap: row })
+  }
+
   return (
     <div className="map-page">
       <header className="topbar">
@@ -34,11 +51,19 @@ export function MapPage() {
           Showing the first {vehicles.length} vehicles. Zoom in to see all.
         </p>
       ) : null}
+      {selection ? (
+        <VehicleCard
+          snapshot={selection.snap}
+          nowMs={tick * 1000}
+          inView={live !== undefined}
+          onClose={() => setSelection(null)}
+        />
+      ) : null}
       <MapView
         collection={collection}
         onBoundsChange={setBbox}
-        onSelect={() => undefined}
-        onDeselect={() => undefined}
+        onSelect={onSelect}
+        onDeselect={() => setSelection(null)}
         onInteraction={() => undefined}
       />
     </div>
