@@ -54,3 +54,20 @@ func TestReadLineWithoutInputIsUsageError(t *testing.T) {
 		}
 	}
 }
+
+// TestRunDemoDevicesNeedsSalt: --demo-devices with a missing or short
+// DEVICE_KEY_SALT exits 2 before any database work (GF-135).
+func TestRunDemoDevicesNeedsSalt(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://unused")
+	args := []string{"--admin-email", "a@example.com", "--demo-devices"}
+	for name, salt := range map[string]string{"missing": "", "short": strings.Repeat("d", 31)} {
+		t.Setenv("DEVICE_KEY_SALT", salt)
+		var stderr bytes.Buffer
+		if code := run(args, strings.NewReader(""), &bytes.Buffer{}, &stderr); code != 2 {
+			t.Errorf("%s salt: exit %d, want 2 (stderr %q)", name, code, stderr.String())
+		}
+		if strings.Contains(stderr.String(), salt) && salt != "" {
+			t.Errorf("%s salt: stderr echoes the salt", name)
+		}
+	}
+}

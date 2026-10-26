@@ -1,6 +1,7 @@
 // Command seed bootstraps the first fleet and admin (D-05). It is run by
 // `make seed`. The password comes from a no-echo TTY prompt or one line on
-// stdin, never from a flag or the environment (GF-23).
+// stdin, never from a flag or the environment (GF-23). With --demo-devices it
+// also writes the demo devices on first seed (GF-135, GF-138).
 //
 // Exit codes: 0 seeded or already seeded, 1 runtime error, 2 usage error.
 package main
@@ -19,6 +20,7 @@ import (
 	_ "github.com/lib/pq"
 	"golang.org/x/term"
 
+	"fleetops/internal/devicesfile"
 	"fleetops/internal/seed"
 )
 
@@ -32,11 +34,22 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	adminEmail := fs.String("admin-email", "", "email of the first admin (required)")
 	fleetName := fs.String("fleet-name", "FleetOps", "name of the first fleet")
 	timezone := fs.String("timezone", "UTC", "IANA timezone of the first fleet")
+	demoDevices := fs.Bool("demo-devices", false, "on first seed, also create demo vehicles and tracker devices (needs DEVICE_KEY_SALT)")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
 
-	opts := seed.Options{AdminEmail: *adminEmail, FleetName: *fleetName, Timezone: *timezone}
+	opts := seed.Options{
+		AdminEmail:  *adminEmail,
+		FleetName:   *fleetName,
+		Timezone:    *timezone,
+		DemoDevices: *demoDevices,
+		DevicesPath: devicesfile.DefaultPath,
+	}
+	if *demoDevices {
+		// The salt is read only when the flag is set (GF-135). It is never printed.
+		opts.DeviceKeySalt = []byte(os.Getenv("DEVICE_KEY_SALT"))
+	}
 	if strings.TrimSpace(opts.AdminEmail) == "" {
 		_, _ = fmt.Fprintln(stderr, "seed: --admin-email is required")
 		return 2
@@ -76,10 +89,16 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	}
 	if !res.Created {
 		_, _ = fmt.Fprintln(stdout, "already seeded; no changes")
+		if *demoDevices {
+			_, _ = fmt.Fprintf(stderr, "seed: --demo-devices applies only on first seed; %s was not rewritten\n", devicesfile.DefaultPath)
+		}
 		return 0
 	}
 	_, _ = fmt.Fprintf(stdout, "seeded fleet %q (id %d) with admin %s (id %d)\n",
 		norm.FleetName, res.FleetID, norm.AdminEmail, res.UserID)
+	if *demoDevices {
+		_, _ = fmt.Fprintf(stdout, "wrote %d demo devices to %s\n", seed.DemoVehicleCount, devicesfile.DefaultPath)
+	}
 	return 0
 }
 

@@ -65,6 +65,7 @@ func main() {
 		DeviceKeySalt: []byte(cfg.DeviceKeySalt),
 		NATS:          js,
 		Gate:          ingest.NewGate(),
+		PresenceTTL:   cfg.PresenceTTL,
 	})
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

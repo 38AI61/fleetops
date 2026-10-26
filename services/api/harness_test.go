@@ -14,6 +14,7 @@ import (
 	"github.com/nats-io/nats.go/jetstream"
 
 	"fleetops/internal/auth"
+	"fleetops/internal/config"
 	"fleetops/internal/ingest"
 	"fleetops/internal/testinfra"
 	"fleetops/internal/users"
@@ -64,6 +65,7 @@ func startServer(t *testing.T) *harness {
 		DeviceKeySalt: testSalt,
 		NATS:          js,
 		Gate:          gate,
+		PresenceTTL:   config.DefaultPresenceTTL,
 	})
 
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
