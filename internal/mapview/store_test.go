@@ -80,8 +80,82 @@ func TestBBoxQueryFixture(t *testing.T) {
 	}
 }
 
-// TestBBoxIndexScan proves the geography predicate uses the GIST index (GF-128).
-// It disables sequential scans so the planner must pick an index when one fits.
+// TestBBoxWholeWorldAndWide covers boxes the geography predicate got wrong
+// (GF-128 amendment): a whole-world box must not raise the antipodal-edge
+// error, and a box wider than 90 degrees of longitude must keep points that
+// lie inside it. Points sit at least 100 m from every edge.
+func TestBBoxWholeWorldAndWide(t *testing.T) {
+	db := testinfra.NewMigratedDB(t)
+	ctx := context.Background()
+	caller := newFleet(t, db, "world")
+	other := newFleet(t, db, "world-other")
+
+	pts := []struct {
+		name     string
+		lng, lat float64
+	}{
+		{"BERLIN", 13.40, 52.52},
+		{"NYC", -74.00, 40.71},
+		{"SYDNEY", 151.21, -33.87},
+		{"SOUTH-EDGE", -179.9, -89.9},
+		{"NORTH-EDGE", 179.9, 89.9},
+	}
+	names := map[int64]string{}
+	for _, p := range pts {
+		names[seedVehicle(t, db, caller, p.name, p.lng, p.lat)] = p.name
+	}
+	seedVehicle(t, db, other, "OTHER-BERLIN", 13.41, 52.52)
+
+	cases := []struct {
+		name string
+		box  BBox
+		want []string
+	}{
+		{"whole world", BBox{MinLng: -180, MinLat: -90, MaxLng: 180, MaxLat: 90},
+			[]string{"BERLIN", "NYC", "SYDNEY", "SOUTH-EDGE", "NORTH-EDGE"}},
+		{"wide south to north lng -100..160", BBox{MinLng: -100, MinLat: -40, MaxLng: 160, MaxLat: 60},
+			[]string{"BERLIN", "NYC", "SYDNEY"}},
+		{"wide northern band", BBox{MinLng: -170, MinLat: 0, MaxLng: 170, MaxLat: 85},
+			[]string{"BERLIN", "NYC"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			rows, err := InBox(ctx, db, caller, tc.box, 1001)
+			if err != nil {
+				t.Fatalf("InBox: %v", err)
+			}
+			got := make([]string, 0, len(rows))
+			for _, r := range rows {
+				got = append(got, names[r.VehicleID])
+			}
+			if !sameSet(got, tc.want) {
+				t.Fatalf("in-box names = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+// sameSet reports whether a and b hold the same strings, ignoring order.
+func sameSet(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	seen := map[string]int{}
+	for _, s := range a {
+		seen[s]++
+	}
+	for _, s := range b {
+		seen[s]--
+		if seen[s] < 0 {
+			return false
+		}
+	}
+	return true
+}
+
+// TestBBoxIndexScan proves the planar predicate uses the planar expression
+// GIST index (GF-128, GF-134). It disables sequential scans so the planner
+// must pick an index when one fits.
 func TestBBoxIndexScan(t *testing.T) {
 	db := testinfra.NewMigratedDB(t)
 	ctx := context.Background()
@@ -119,7 +193,7 @@ func TestBBoxIndexScan(t *testing.T) {
 	if err := rows.Err(); err != nil {
 		t.Fatalf("plan rows: %v", err)
 	}
-	if !strings.Contains(plan.String(), "vehicles_latest_geom_gix") {
-		t.Fatalf("plan does not use vehicles_latest_geom_gix:\n%s", plan.String())
+	if !strings.Contains(plan.String(), "vehicles_latest_geom_planar_gix") {
+		t.Fatalf("plan does not use vehicles_latest_geom_planar_gix:\n%s", plan.String())
 	}
 }

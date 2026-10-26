@@ -7,13 +7,15 @@ import (
 	"time"
 )
 
-// inBoxSQL is GF-128. ST_Intersects on geography uses vehicles_latest_geom_gix,
+// inBoxSQL is GF-128 as amended: a planar && bound uses the expression index
+// vehicles_latest_geom_planar_gix (GF-134), ST_Covers is the exact refinement,
 // and fleet_id = $1 uses vehicles_latest_fleet_idx.
 const inBoxSQL = `
 SELECT vehicle_id, ST_Y(geom::geometry), ST_X(geom::geometry), speed_kmh, heading_deg, device_ts, server_ts
 FROM vehicles_latest
 WHERE fleet_id = $1
-  AND ST_Intersects(geom, ST_MakeEnvelope($2, $3, $4, $5, 4326)::geography)
+  AND geom::geometry && ST_MakeEnvelope($2, $3, $4, $5, 4326)
+  AND ST_Covers(ST_MakeEnvelope($2, $3, $4, $5, 4326), geom::geometry)
 ORDER BY vehicle_id
 LIMIT $6`
 
