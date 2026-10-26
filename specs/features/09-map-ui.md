@@ -5,7 +5,7 @@ Source plan: `/root/.claude/plans/p9-plan-snoopy-balloon.md` (approved, self-gat
 
 This spec is written before any P9 code (R-1, SDD). Implementation starts at Plan task group G0.
 
-Ready to persist verbatim as `specs/features/09-map-ui.md`. Decisions GF-152 onward are new in P9. Nothing here edits README, PORTS.md, compose, the constitution, or any Go code. Where a roadmap or CLAUDE.md wording conflicts with what the API and hub can actually do, the conflict is resolved in a GF entry and called out there.
+Decisions GF-152 onward are new in P9. Nothing here edits README, PORTS.md, compose, the constitution, or any Go code. Where a roadmap or CLAUDE.md wording conflicts with what the API and hub can actually do, the conflict is resolved in a GF entry and called out there.
 
 ## Scope
 
