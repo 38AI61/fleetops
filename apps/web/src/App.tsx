@@ -1,11 +1,14 @@
 import { QueryClientProvider } from '@tanstack/react-query'
-import { useEffect } from 'react'
+import { lazy, Suspense, useEffect } from 'react'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router'
 import { queryClient } from './api/queryClient'
 import { bootSession } from './auth/boot'
 import { LoginRoute, RequireSession } from './auth/guard'
 
-// G5 replaces the /map placeholder with the operations map page.
+// Lazy so the login route never loads MapLibre (jsdom cannot run it, and the
+// login bundle stays small).
+const MapPage = lazy(() => import('./map/MapPage').then((m) => ({ default: m.MapPage })))
+
 export function App() {
   useEffect(() => {
     void bootSession()
@@ -20,7 +23,9 @@ export function App() {
             path="/map"
             element={
               <RequireSession>
-                <p>Map</p>
+                <Suspense fallback={<p>Loading</p>}>
+                  <MapPage />
+                </Suspense>
               </RequireSession>
             }
           />

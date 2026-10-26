@@ -5,3 +5,29 @@ body,
   margin: 0;
   font-family: system-ui, sans-serif;
 }
+
+.map-page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 1rem;
+  border-bottom: 1px solid #d1d5db;
+}
+
+.map-canvas {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+}
+
+.banner {
+  margin: 0;
+  padding: 0.5rem 1rem;
+  background: #fef3c7;
+}
