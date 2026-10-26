@@ -15,7 +15,9 @@ const jobPoints = `"pickup":{"lat":41.0082,"lng":28.9784},"dropoff":{"lat":41.04
 // jobsFleet is one fleet with an admin and a dispatcher, both logged in.
 type jobsFleet struct {
 	id       int64
+	adminID  int64
 	adminTok string
+	dispID   int64
 	dispTok  string
 }
 
@@ -23,10 +25,10 @@ func newJobsFleet(t *testing.T, h *harness, name string) jobsFleet {
 	t.Helper()
 	f := jobsFleet{id: h.fleet(t, name)}
 	adminEmail := name + "-admin@jobs.example"
-	h.user(t, f.id, adminEmail, "admin")
+	f.adminID = h.user(t, f.id, adminEmail, "admin")
 	f.adminTok = h.login(t, adminEmail)
 	dispEmail := name + "-dispatcher@jobs.example"
-	h.user(t, f.id, dispEmail, "dispatcher")
+	f.dispID = h.user(t, f.id, dispEmail, "dispatcher")
 	f.dispTok = h.login(t, dispEmail)
 	return f
 }
