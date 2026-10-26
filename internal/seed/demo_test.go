@@ -86,7 +86,7 @@ func TestDemoDevicesRerunIdempotent(t *testing.T) {
 	if _, err := seed.Run(ctx, db, demoOpts(path), constPW(goodPW)); err != nil {
 		t.Fatalf("first Run: %v", err)
 	}
-	before, err := os.ReadFile(path)
+	before, err := os.ReadFile(filepath.Clean(path))
 	if err != nil {
 		t.Fatalf("read file: %v", err)
 	}
@@ -101,7 +101,7 @@ func TestDemoDevicesRerunIdempotent(t *testing.T) {
 	if res.Created {
 		t.Fatal("second Run reported Created")
 	}
-	after, err := os.ReadFile(path)
+	after, err := os.ReadFile(filepath.Clean(path))
 	if err != nil {
 		t.Fatalf("reread file: %v", err)
 	}

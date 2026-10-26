@@ -26,25 +26,33 @@ const (
 const waypointStream = 0x8f1a_2b3c_4d5e_6f70
 
 // GenerateWaypoints returns the closed loop for one device (GF-142). The same
-// device id always yields the same four points. A point equal to its
-// predecessor, or the last point equal to the first, is redrawn so the loop
-// stays valid.
+// device id always yields the same four points. A loop with two equal
+// consecutive points, including the closing pair, is redrawn in full.
 func GenerateWaypoints(deviceID int64) []devicesfile.Point {
-	rng := rand.New(rand.NewPCG(uint64(deviceID), waypointStream))
-	draw := func() devicesfile.Point {
-		return devicesfile.Point{
-			Lat: demoLatMin + rng.Float64()*(demoLatMax-demoLatMin),
-			Lng: demoLngMin + rng.Float64()*(demoLngMax-demoLngMin),
+	// Simulation geometry, not a secret, so a seeded PRNG is the intended tool (GF-142).
+	rng := rand.New(rand.NewPCG(uint64(deviceID), waypointStream)) //nolint:gosec // seeded route data, not a credential
+	for {
+		pts := make([]devicesfile.Point, devicesfile.WaypointsPerDevice)
+		for i := range pts {
+			pts[i] = devicesfile.Point{
+				Lat: demoLatMin + rng.Float64()*(demoLatMax-demoLatMin),
+				Lng: demoLngMin + rng.Float64()*(demoLngMax-demoLngMin),
+			}
+		}
+		if loopDistinct(pts) {
+			return pts
 		}
 	}
-	pts := make([]devicesfile.Point, devicesfile.WaypointsPerDevice)
+}
+
+// loopDistinct reports whether no two consecutive points of the closed loop are equal.
+func loopDistinct(pts []devicesfile.Point) bool {
 	for i := range pts {
-		pts[i] = draw()
-		for i > 0 && (pts[i] == pts[i-1] || (i == len(pts)-1 && pts[i] == pts[0])) {
-			pts[i] = draw()
+		if pts[i] == pts[(i+1)%len(pts)] {
+			return false
 		}
 	}
-	return pts
+	return true
 }
 
 // RunDemo creates DemoVehicleCount vehicles, each with one tracker device

@@ -145,7 +145,7 @@ func Write(path string, f File) error {
 // Read parses and validates the keys file. A missing file returns an error
 // that wraps fs.ErrNotExist, so callers can point the operator at --demo-devices.
 func Read(path string) (File, error) {
-	raw, err := os.ReadFile(path)
+	raw, err := os.ReadFile(filepath.Clean(path))
 	if err != nil {
 		return File{}, fmt.Errorf("read devices file: %w", err)
 	}

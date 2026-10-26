@@ -54,7 +54,7 @@ func TestDevicesFileRoundTripAndShape(t *testing.T) {
 	}
 
 	// The on-disk shape matches GF-137 exactly.
-	raw, err := os.ReadFile(path)
+	raw, err := os.ReadFile(filepath.Clean(path))
 	if err != nil {
 		t.Fatalf("read raw: %v", err)
 	}
