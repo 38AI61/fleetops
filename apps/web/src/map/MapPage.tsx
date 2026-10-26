@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { VehicleRow } from '../api/types'
 import { logout } from '../auth/logout'
 import { VehicleCard } from '../details/VehicleCard'
 import { toFeatureCollection, type VehicleCollection } from '../status/display'
-import { MapView } from './MapView'
+import { MapView, type InteractionEvent } from './MapView'
 import { bboxParam } from './bbox'
+import { followCenter, nextFollowId, type FollowEvent } from './follow'
 import { useMapVehicles } from './useMapVehicles'
 import { useNow } from './useNow'
 
@@ -33,9 +34,39 @@ export function MapPage() {
     }
   }, [selection, live])
 
+  // Follow mode centers the camera on the selected vehicle (GF-161).
+  const [followId, setFollowId] = useState<number | null>(null)
+  const [followTarget, setFollowTarget] = useState<[number, number] | null>(null)
+  const prevPosRef = useRef<{ lat: number; lng: number } | null>(null)
+  useEffect(() => {
+    if (followId === null) return
+    const row = vehicles.find((v) => v.vehicle_id === followId)
+    const target = followCenter(prevPosRef.current, row)
+    if (row) prevPosRef.current = { lat: row.lat, lng: row.lng }
+    if (target) setFollowTarget(target)
+  }, [followId, vehicles])
+
+  function applyFollow(event: FollowEvent) {
+    setFollowId((current) => nextFollowId(current, event))
+    if (event.type === 'select' || event.type === 'deselect' || event.type === 'stop') {
+      prevPosRef.current = null
+    }
+  }
+
   function onSelect(vehicleId: number) {
     const row = vehicles.find((v) => v.vehicle_id === vehicleId)
-    if (row) setSelection({ id: vehicleId, snap: row })
+    if (!row) return
+    setSelection({ id: vehicleId, snap: row })
+    applyFollow({ type: 'select', vehicleId })
+  }
+
+  function clearSelection() {
+    setSelection(null)
+    applyFollow({ type: 'deselect' })
+  }
+
+  function onInteraction(event: InteractionEvent) {
+    applyFollow(event)
   }
 
   return (
@@ -56,15 +87,18 @@ export function MapPage() {
           snapshot={selection.snap}
           nowMs={tick * 1000}
           inView={live !== undefined}
-          onClose={() => setSelection(null)}
+          following={followId === selection.id}
+          onStopFollow={() => applyFollow({ type: 'stop' })}
+          onClose={clearSelection}
         />
       ) : null}
       <MapView
         collection={collection}
         onBoundsChange={setBbox}
         onSelect={onSelect}
-        onDeselect={() => setSelection(null)}
-        onInteraction={() => undefined}
+        onDeselect={clearSelection}
+        onInteraction={onInteraction}
+        followTarget={followTarget}
       />
     </div>
   )

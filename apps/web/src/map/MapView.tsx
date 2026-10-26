@@ -17,6 +17,8 @@ export interface MapViewProps {
   onSelect: (vehicleId: number) => void
   onDeselect: () => void
   onInteraction: (event: InteractionEvent) => void
+  // Camera center for follow mode. Zoom is left alone (GF-161).
+  followTarget: [number, number] | null
 }
 
 const SOURCE_ID = 'vehicles'
@@ -131,6 +133,12 @@ export function MapView(props: MapViewProps) {
     if (!map || !loadedRef.current) return
     map.getSource<GeoJSONSource>(SOURCE_ID)?.setData(props.collection)
   }, [props.collection])
+
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !props.followTarget) return
+    map.easeTo({ center: props.followTarget, duration: 500 })
+  }, [props.followTarget])
 
   return <div ref={containerRef} className="map-canvas" />
 }
