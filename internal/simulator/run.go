@@ -199,8 +199,8 @@ func Run(ctx context.Context, cfg Config) (Summary, error) {
 	if len(cfg.Vehicles) == 0 {
 		return Summary{}, errors.New("simulator: no vehicles")
 	}
-	if err := CheckRate(cfg.Rate); err != nil {
-		return Summary{}, err
+	if cfg.Rate <= 0 {
+		return Summary{}, errors.New("simulator: rate must be positive")
 	}
 	if cfg.Sender == nil {
 		return Summary{}, errors.New("simulator: no sender")
