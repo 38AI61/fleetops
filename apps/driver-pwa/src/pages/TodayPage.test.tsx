@@ -6,6 +6,8 @@ import { ApiError } from '../api/client'
 import { listTodayJobs, transitionJob } from '../api/driver'
 import type { DriverJob, JobState } from '../api/types'
 import { DEVICE_KEY_STORAGE } from '../device/key'
+import { saveSnapshot } from '../offline/snapshot'
+import { resetQueueDb } from '../test/queue'
 import { setSession } from '../session/session'
 import { ON_SHIFT_STORAGE } from '../position/shift'
 import { renderAt } from '../test/render'
@@ -97,6 +99,16 @@ describe('TodayPage', () => {
     fireEvent.click(await within(await findRow(1)).findByRole('button', { name: 'Start' }))
 
     await waitFor(() => expect(within(row(1)).getByRole('button', { name: 'Start' })).toBeDisabled())
+  })
+
+  it('shows the snapshot list with an Offline label when the network is down', async () => {
+    await resetQueueDb()
+    await saveSnapshot('7', [job(8, 'assigned')], new Date(2026, 9, 27, 9, 5).getTime())
+    vi.mocked(listTodayJobs).mockRejectedValue(new TypeError('Failed to fetch'))
+    renderAt('/today')
+
+    expect(await findRow(8)).toBeInTheDocument()
+    expect(screen.getByText(/Offline — as of/)).toBeInTheDocument()
   })
 
   it('shows the empty message for an empty list', async () => {

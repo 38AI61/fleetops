@@ -23,6 +23,7 @@ export function TodayPage() {
   const transition = useJobTransition()
   const onShift = useOnShift()
   const hasKey = loadDeviceKey() !== null
+  const rows = jobs.data?.jobs
   const [notice, setNotice] = useState<string | null>(null)
 
   function act(job: DriverJob, action: TransitionAction) {
@@ -56,10 +57,11 @@ export function TodayPage() {
       {notice && <p role="alert">{notice}</p>}
       {jobs.isPending && <p role="status">Loading jobs…</p>}
       {jobs.isError && <p role="alert">Could not load jobs.</p>}
-      {jobs.data?.length === 0 && <p>No jobs for today.</p>}
-      {jobs.data && jobs.data.length > 0 && (
+      {jobs.data?.stale && <p role="status">Offline — as of {formatTime(jobs.data.fetchedAt)}</p>}
+      {rows?.length === 0 && <p>No jobs for today.</p>}
+      {rows && rows.length > 0 && (
         <ul>
-          {jobs.data.map((job) => (
+          {rows.map((job) => (
             <li key={job.id}>
               <strong>Job {job.id}</strong>{' '}
               <span>{STATE_LABELS[job.state] ?? job.state}</span>
@@ -98,6 +100,7 @@ function JobAction({ job, pending, onAct }: JobActionProps) {
   )
 }
 
-function formatTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+// Accepts an ISO string (window_start) or epoch milliseconds (fetchedAt).
+function formatTime(value: string | number): string {
+  return new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 }
