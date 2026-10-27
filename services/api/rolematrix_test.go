@@ -163,12 +163,54 @@ func TestRoleMatrix(t *testing.T) {
 		}, [5]int{ok200, forb, ok200, forb, unau}},
 		{"POST /jobs/:id/cancel", http.MethodPost, "/jobs/0/cancel", func(int) string { return "" },
 			[5]int{ok200, forb, ok200, forb, unau}},
+
+		// P11 driver rows (GF-186). Only the driver cell is allowed; the others are refused by role.
+		{"GET /driver/jobs/today", http.MethodGet, "/driver/jobs/today", func(int) string { return "" },
+			[5]int{forb, forb, forb, ok200, unau}},
+		{"POST /driver/jobs/:id/accept", http.MethodPost, "/driver/jobs/0/accept", func(int) string { return "" },
+			[5]int{forb, forb, forb, ok200, unau}},
+		{"POST /driver/jobs/:id/start", http.MethodPost, "/driver/jobs/0/start", func(int) string { return "" },
+			[5]int{forb, forb, forb, ok200, unau}},
+		{"POST /driver/jobs/:id/pickup", http.MethodPost, "/driver/jobs/0/pickup", func(int) string { return "" },
+			[5]int{forb, forb, forb, ok200, unau}},
+		{"POST /driver/jobs/:id/fail", http.MethodPost, "/driver/jobs/0/fail", func(int) string {
+			return `{"reason":"matrix"}`
+		}, [5]int{forb, forb, forb, ok200, unau}},
 	}
 
-	// jobRowSetup gives each job row a fresh created job, so every row starts from the same state.
+	// driverJob creates a job assigned to the linked driver, advances it through
+	// steps as the admin, and returns the driver route for action. Only the driver
+	// cell mutates it, so one job per row is enough.
+	driverJob := func(action string, steps ...jobs.State) func() string {
+		return func() string {
+			st := &jobs.Store{DB: h.db}
+			job, err := st.Create(ctx, ids["admin"], fleet, jobs.NewJob{
+				Pickup:  jobs.Point{Lat: 41.0, Lng: 29.0},
+				Dropoff: jobs.Point{Lat: 41.1, Lng: 29.1},
+			})
+			if err != nil {
+				t.Fatalf("fixture job: %v", err)
+			}
+			if _, _, err := st.Assign(ctx, ids["admin"], fleet, job.ID, vehicle.ID, driver.ID); err != nil {
+				t.Fatalf("fixture assign: %v", err)
+			}
+			for _, to := range steps {
+				if _, _, err := st.Transition(ctx, ids["admin"], fleet, job.ID, to); err != nil {
+					t.Fatalf("fixture advance to %s: %v", to, err)
+				}
+			}
+			return fmt.Sprintf("/driver/jobs/%d/%s", job.ID, action)
+		}
+	}
+
+	// jobRowSetup gives each job row a fresh job in the state its route needs, so every row starts from the same state.
 	jobRowSetup := map[string]func() string{
-		"POST /jobs/:id/assign": freshJob("assign"),
-		"POST /jobs/:id/cancel": freshJob("cancel"),
+		"POST /jobs/:id/assign":        freshJob("assign"),
+		"POST /jobs/:id/cancel":        freshJob("cancel"),
+		"POST /driver/jobs/:id/accept": driverJob("accept"),
+		"POST /driver/jobs/:id/start":  driverJob("start", jobs.StateAccepted),
+		"POST /driver/jobs/:id/pickup": driverJob("pickup", jobs.StateAccepted, jobs.StateEnRoute),
+		"POST /driver/jobs/:id/fail":   driverJob("fail", jobs.StateAccepted),
 	}
 
 	seq := 0 // gives each POST a unique email, plate, or license
