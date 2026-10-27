@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"slices"
 	"testing"
 	"time"
@@ -326,5 +327,133 @@ func TestDriverStoreTransition(t *testing.T) {
 	}
 	if stateOf(val) != StateAssigned {
 		t.Fatalf("validation refusals changed the job")
+	}
+}
+
+// TestDriverStoreDeliver covers GF-194 and GF-197 on the store: the gate, the
+// one-UPDATE delivery with its proof columns, the D-24 replay with the first key
+// kept, the wrong-state and ownership refusals, and the event count per job.
+func TestDriverStoreDeliver(t *testing.T) {
+	db := testinfra.NewMigratedDB(t)
+	s := &Store{DB: db}
+	ctx := context.Background()
+	fleet, admin := fleetWithAdmin(t, db, "deliver")
+	otherFleet, _ := fleetWithAdmin(t, db, "deliver-other")
+	vehicle := fleetVehicle(t, db, fleet, "DLV-1")
+	me := fleetDriver(t, db, fleet, "deliver-me")
+	other := fleetDriver(t, db, fleet, "deliver-other-driver")
+
+	// mk creates a job assigned to driver and advanced through steps.
+	mk := func(driver int64, steps ...State) int64 {
+		t.Helper()
+		job, err := s.Create(ctx, admin, fleet, NewJob{
+			Pickup: Point{Lat: 41.0082, Lng: 28.9784}, Dropoff: Point{Lat: 41.0422, Lng: 29.0083},
+		})
+		if err != nil {
+			t.Fatalf("create: %v", err)
+		}
+		if _, _, err := s.Assign(ctx, admin, fleet, job.ID, vehicle, driver); err != nil {
+			t.Fatalf("assign: %v", err)
+		}
+		for _, to := range steps {
+			if _, _, err := s.Transition(ctx, admin, fleet, job.ID, to); err != nil {
+				t.Fatalf("advance to %s: %v", to, err)
+			}
+		}
+		return job.ID
+	}
+	const key = "proofs/%d/%d/first.jpg"
+	// events counts job_events rows for a job; the trigger writes one per change.
+	events := func(job int64) int {
+		return rowCount(t, db, `SELECT count(*) FROM job_events WHERE job_id = $1`, job)
+	}
+
+	// Gate: picked_up and delivered pass; en_route is a conflict; a wrong driver or
+	// a cross-fleet caller is not found.
+	pickedUp := mk(me, StateAccepted, StateEnRoute, StatePickedUp)
+	enRoute := mk(me, StateAccepted, StateEnRoute)
+	if st, err := s.DriverDeliverGate(ctx, fleet, pickedUp, me); err != nil || st != StatePickedUp {
+		t.Fatalf("gate picked_up = %q %v, want picked_up nil", st, err)
+	}
+	if _, err := s.DriverDeliverGate(ctx, fleet, enRoute, me); !errors.Is(err, ErrConflict) {
+		t.Fatalf("gate en_route = %v, want ErrConflict", err)
+	}
+	if _, err := s.DriverDeliverGate(ctx, fleet, pickedUp, other); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("gate wrong driver = %v, want ErrNotFound", err)
+	}
+	if _, err := s.DriverDeliverGate(ctx, otherFleet, pickedUp, me); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("gate cross-fleet = %v, want ErrNotFound", err)
+	}
+
+	// Refusals write nothing: wrong driver, cross-fleet, wrong state.
+	before := events(pickedUp)
+	if _, _, err := s.DriverDeliver(ctx, me, fleet, pickedUp, other, "proofs/x.jpg", 41, 29); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("deliver wrong driver = %v, want ErrNotFound", err)
+	}
+	if _, _, err := s.DriverDeliver(ctx, me, otherFleet, pickedUp, me, "proofs/x.jpg", 41, 29); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("deliver cross-fleet = %v, want ErrNotFound", err)
+	}
+	if _, _, err := s.DriverDeliver(ctx, me, fleet, enRoute, me, "proofs/x.jpg", 41, 29); !errors.Is(err, ErrConflict) {
+		t.Fatalf("deliver en_route = %v, want ErrConflict", err)
+	}
+	if got := events(pickedUp); got != before {
+		t.Fatalf("refusals wrote events: %d -> %d", before, got)
+	}
+
+	// Happy path: one UPDATE writes state, delivered_at, proof_photo and delivery_geom.
+	firstKey := fmt.Sprintf(key, fleet, pickedUp)
+	ch, out, err := s.DriverDeliver(ctx, me, fleet, pickedUp, me, firstKey, 41.0422, 29.0083)
+	if err != nil || out != Applied {
+		t.Fatalf("deliver = %v %v, want Applied nil", out, err)
+	}
+	if ch.From != StatePickedUp || ch.To != StateDelivered {
+		t.Fatalf("change %s->%s, want picked_up->delivered", ch.From, ch.To)
+	}
+	if ch.Job.State != StateDelivered || ch.Job.DeliveredAt == nil {
+		t.Fatalf("job after deliver = %+v, want delivered with delivered_at", ch.Job)
+	}
+	var proof string
+	var lat, lng float64
+	if err := db.QueryRow(`
+		SELECT proof_photo, ST_Y(delivery_geom::geometry), ST_X(delivery_geom::geometry)
+		FROM jobs WHERE id = $1`, pickedUp).Scan(&proof, &lat, &lng); err != nil {
+		t.Fatalf("read proof: %v", err)
+	}
+	if proof != firstKey || lat != 41.0422 || lng != 29.0083 {
+		t.Fatalf("stored proof=%q at (%v,%v), want %q at (41.0422,29.0083)", proof, lat, lng, firstKey)
+	}
+	if n := rowCount(t, db, `SELECT count(*) FROM job_events WHERE job_id = $1 AND from_state = 'picked_up' AND to_state = 'delivered'`, pickedUp); n != 1 {
+		t.Fatalf("picked_up->delivered events = %d, want 1", n)
+	}
+	afterApply := events(pickedUp)
+
+	// Replay: a second deliver with another key is a replay. No event, and the first key stays.
+	ch2, out, err := s.DriverDeliver(ctx, me, fleet, pickedUp, me, fmt.Sprintf(key, fleet, pickedUp)+"-second", 10, 10)
+	if err != nil || out != Replayed {
+		t.Fatalf("replay = %v %v, want Replayed nil", out, err)
+	}
+	if ch2.Job.State != StateDelivered {
+		t.Fatalf("replay job state = %s, want delivered", ch2.Job.State)
+	}
+	if got := events(pickedUp); got != afterApply {
+		t.Fatalf("replay wrote events: %d -> %d", afterApply, got)
+	}
+	if err := db.QueryRow(`SELECT proof_photo FROM jobs WHERE id = $1`, pickedUp).Scan(&proof); err != nil || proof != firstKey {
+		t.Fatalf("proof after replay = %q %v, want first key", proof, err)
+	}
+	if st, err := s.DriverDeliverGate(ctx, fleet, pickedUp, me); err != nil || st != StateDelivered {
+		t.Fatalf("gate after delivery = %q %v, want delivered nil", st, err)
+	}
+	// The delivered job is still not the other driver's, and a cross-fleet replay is not found.
+	if _, _, err := s.DriverDeliver(ctx, me, fleet, pickedUp, other, "proofs/y.jpg", 41, 29); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("replay wrong driver = %v, want ErrNotFound", err)
+	}
+	if _, _, err := s.DriverDeliver(ctx, me, otherFleet, pickedUp, me, "proofs/y.jpg", 41, 29); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("replay cross-fleet = %v, want ErrNotFound", err)
+	}
+
+	// Event count: created, assigned, accepted, en_route, picked_up, delivered = 6.
+	if got := events(pickedUp); got != 6 {
+		t.Fatalf("events for delivered job = %d, want 6", got)
 	}
 }
