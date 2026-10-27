@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 	"unicode/utf8"
 
@@ -21,6 +22,7 @@ const (
 	roleAdmin      = "admin"
 	roleManager    = "manager"
 	roleDispatcher = "dispatcher"
+	roleDriver     = "driver"
 )
 
 // Limits from GF-173. The DB CHECKs enforce the same bounds.
@@ -31,11 +33,13 @@ const (
 	dayLayout     = "2006-01-02"
 )
 
-// Handler serves the P10 dispatcher routes (GF-177). Every handler takes its
-// fleet and actor from the principal, never from the request (GF-27, GF-180).
+// Handler serves the P10 dispatcher routes (GF-177) and the P11 driver routes
+// (GF-186). Every handler takes its fleet and actor from the principal, never
+// from the request (GF-27, GF-180). Now is the request clock; nil means time.Now.
 type Handler struct {
 	Svc    *Store
 	Events Publisher
+	Now    func() time.Time
 }
 
 // Register mounts the job routes. authn is auth.RequireAuth for the
@@ -43,11 +47,26 @@ type Handler struct {
 func (h *Handler) Register(e *echo.Echo, authn echo.MiddlewareFunc) {
 	writers := auth.RequireRole(roleAdmin, roleDispatcher)
 	readers := auth.RequireRole(roleAdmin, roleManager, roleDispatcher)
+	driver := auth.RequireRole(roleDriver)
 
 	e.POST("/jobs", h.create, authn, writers)
 	e.GET("/jobs", h.list, authn, readers)
 	e.POST("/jobs/:id/assign", h.assign, authn, writers)
 	e.POST("/jobs/:id/cancel", h.cancel, authn, writers)
+
+	e.GET("/driver/jobs/today", h.driverToday, authn, driver)
+	e.POST("/driver/jobs/:id/accept", h.driverMove(StateAccepted), authn, driver)
+	e.POST("/driver/jobs/:id/start", h.driverMove(StateEnRoute), authn, driver)
+	e.POST("/driver/jobs/:id/pickup", h.driverMove(StatePickedUp), authn, driver)
+	e.POST("/driver/jobs/:id/fail", h.driverMove(StateFailed), authn, driver)
+}
+
+// now is the request clock, time.Now when no clock is set.
+func (h *Handler) now() time.Time {
+	if h.Now == nil {
+		return time.Now()
+	}
+	return h.Now()
 }
 
 type pointBody struct {
@@ -74,6 +93,14 @@ type assignBody struct {
 type listOut struct {
 	Jobs []Job `json:"jobs"`
 }
+
+// failBody is the POST /driver/jobs/:id/fail body (GF-188).
+type failBody struct {
+	Reason *string `json:"reason"`
+}
+
+// maxFailReasonRunes is the GF-173 notes cap, reused for the fail reason (GF-188).
+const maxFailReasonRunes = maxNotesRunes
 
 // newJobFrom validates a create body (GF-173). Any failure is ErrValidation.
 func newJobFrom(in createBody) (NewJob, error) {
@@ -269,6 +296,85 @@ func (h *Handler) cancel(c echo.Context) error {
 		publishChange(h.Events, ch)
 	}
 	return c.JSON(http.StatusOK, ch.Job)
+}
+
+// driverToday serves GET /driver/jobs/today (GF-185). An unlinked driver has no
+// jobs, so it gets an empty list, not an error.
+func (h *Handler) driverToday(c echo.Context) error {
+	p, ok := auth.PrincipalFrom(c)
+	if !ok {
+		return apierr.Write(c, http.StatusUnauthorized, apierr.Unauthorized)
+	}
+	driverID, linked, err := resolveDriver(c.Request().Context(), h.Svc.DB, p)
+	if err != nil {
+		return err
+	}
+	if !linked {
+		return c.JSON(http.StatusOK, listOut{Jobs: []Job{}})
+	}
+	jobs, err := h.Svc.DriverJobs(c.Request().Context(), p.FleetID, driverID, h.now())
+	if err != nil {
+		return err
+	}
+	return c.JSON(http.StatusOK, listOut{Jobs: jobs})
+}
+
+// driverMove serves one driver transition (GF-186..GF-188). The caller's driver
+// row is resolved first: an unlinked caller gets 404. A malformed :id is 404.
+// accept, start and pickup take an empty body; fail takes a reason.
+func (h *Handler) driverMove(to State) echo.HandlerFunc {
+	return func(c echo.Context) error {
+		p, ok := auth.PrincipalFrom(c)
+		if !ok {
+			return apierr.Write(c, http.StatusUnauthorized, apierr.Unauthorized)
+		}
+		driverID, linked, err := resolveDriver(c.Request().Context(), h.Svc.DB, p)
+		if err != nil {
+			return err
+		}
+		if !linked {
+			return writeErr(c, ErrNotFound)
+		}
+		id, ok := idParam(c)
+		if !ok {
+			return apierr.Write(c, http.StatusNotFound, apierr.NotFound)
+		}
+		var reason *string
+		if to == StateFailed {
+			r, err := failReason(c)
+			if err != nil {
+				return writeErr(c, err)
+			}
+			reason = &r
+		} else if err := bindEmptyObject(c); err != nil {
+			return writeErr(c, err)
+		}
+		ch, out, err := h.Svc.DriverTransition(c.Request().Context(), p.UserID, p.FleetID, id, driverID, to, reason)
+		if err != nil {
+			return writeErr(c, err)
+		}
+		if out == Applied {
+			publishChange(h.Events, ch)
+		}
+		return c.JSON(http.StatusOK, ch.Job)
+	}
+}
+
+// failReason reads the fail body (GF-188): reason is required, trimmed, non-empty,
+// and at most maxFailReasonRunes runes. Unknown fields are refused by bindStrict.
+func failReason(c echo.Context) (string, error) {
+	var in failBody
+	if err := bindStrict(c, &in); err != nil {
+		return "", err
+	}
+	if in.Reason == nil {
+		return "", ErrValidation
+	}
+	r := strings.TrimSpace(*in.Reason)
+	if r == "" || utf8.RuneCountInString(r) > maxFailReasonRunes {
+		return "", ErrValidation
+	}
+	return r, nil
 }
 
 // bindStrict decodes one JSON object and refuses unknown fields. Any decode
