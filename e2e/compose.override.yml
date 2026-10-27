@@ -1,0 +1,6 @@
+# E2E-only override (P16). Bitnami's MinIO image runs as uid 1001, which cannot write
+# a fresh named volume (GF-208). internal/proofs/prooftest runs it as root for the same
+# reason. deploy/docker-compose.yml is not edited; this file is layered on top of it.
+services:
+  minio:
+    user: root

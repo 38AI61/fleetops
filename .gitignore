@@ -21,3 +21,7 @@ logs/
 
 # Host-only tool overrides (written per machine, never committed)
 deploy/.local/
+
+# Playwright happy-path report and traces (P16)
+e2e/playwright-report/
+e2e/test-results/
