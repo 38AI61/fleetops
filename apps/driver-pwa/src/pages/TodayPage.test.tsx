@@ -6,6 +6,10 @@ import { ApiError } from '../api/client'
 import { listTodayJobs, transitionJob } from '../api/driver'
 import type { DriverJob, JobState } from '../api/types'
 import { DEVICE_KEY_STORAGE } from '../device/key'
+import { saveSnapshot } from '../offline/snapshot'
+import { resetQueueDb } from '../test/queue'
+import { setOnline } from '../test/network'
+import { listQueue } from '../offline/queue'
 import { setSession } from '../session/session'
 import { ON_SHIFT_STORAGE } from '../position/shift'
 import { renderAt } from '../test/render'
@@ -45,7 +49,8 @@ async function findRow(id: number): Promise<HTMLElement> {
 }
 
 describe('TodayPage', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    await resetQueueDb()
     localStorage.clear()
     localStorage.setItem(DEVICE_KEY_STORAGE, VALID)
     signInAs('driver')
@@ -54,6 +59,7 @@ describe('TodayPage', () => {
   })
 
   afterEach(() => {
+    setOnline(true)
     setSession(null)
     localStorage.clear()
   })
@@ -90,13 +96,51 @@ describe('TodayPage', () => {
   })
 
   it('disables the tapped button while the move is pending', async () => {
+    // The pass holds the queue lock until the request settles, so release it at the end.
+    let release: (value: DriverJob) => void = () => {}
     vi.mocked(listTodayJobs).mockResolvedValue([job(1, 'accepted')])
-    vi.mocked(transitionJob).mockReturnValue(new Promise(() => {}))
+    vi.mocked(transitionJob).mockReturnValue(new Promise((resolve) => (release = resolve)))
     renderAt('/today')
 
     fireEvent.click(await within(await findRow(1)).findByRole('button', { name: 'Start' }))
 
     await waitFor(() => expect(within(row(1)).getByRole('button', { name: 'Start' })).toBeDisabled())
+    release(job(1, 'en_route'))
+    await waitFor(async () => expect(await listQueue('7')).toHaveLength(0))
+  })
+
+  it('an offline tap queues the move, shows Queued and holds the button', async () => {
+    setOnline(false)
+    vi.mocked(listTodayJobs).mockResolvedValue([job(1, 'assigned')])
+    renderAt('/today')
+
+    fireEvent.click(await within(await findRow(1)).findByRole('button', { name: 'Accept' }))
+
+    expect(await within(row(1)).findByText('Queued')).toBeInTheDocument()
+    expect(within(row(1)).getByRole('button', { name: 'Accept' })).toBeDisabled()
+    expect(transitionJob).not.toHaveBeenCalled()
+    expect(await listQueue('7')).toHaveLength(1)
+  })
+
+  it('a tap while online sends the move through the queue', async () => {
+    vi.mocked(listTodayJobs).mockResolvedValue([job(1, 'accepted')])
+    vi.mocked(transitionJob).mockResolvedValue({ ...job(1, 'en_route') })
+    renderAt('/today')
+
+    fireEvent.click(await within(await findRow(1)).findByRole('button', { name: 'Start' }))
+
+    await waitFor(() => expect(transitionJob).toHaveBeenCalledWith(1, 'start'))
+    await waitFor(async () => expect(await listQueue('7')).toHaveLength(0))
+  })
+
+  it('shows the snapshot list with an Offline label when the network is down', async () => {
+    await resetQueueDb()
+    await saveSnapshot('7', [job(8, 'assigned')], new Date(2026, 9, 27, 9, 5).getTime())
+    vi.mocked(listTodayJobs).mockRejectedValue(new TypeError('Failed to fetch'))
+    renderAt('/today')
+
+    expect(await findRow(8)).toBeInTheDocument()
+    expect(screen.getByText(/Offline — as of/)).toBeInTheDocument()
   })
 
   it('shows the empty message for an empty list', async () => {
@@ -105,16 +149,19 @@ describe('TodayPage', () => {
     expect(await screen.findByText('No jobs for today.')).toBeInTheDocument()
   })
 
-  it('a 409 shows a message and refetches the list', async () => {
+  it('a 409 shows the conflict, keeps the move queued and refetches the list', async () => {
     vi.mocked(listTodayJobs).mockResolvedValueOnce([job(1, 'assigned')])
-    vi.mocked(listTodayJobs).mockResolvedValueOnce([job(1, 'created')])
+    vi.mocked(listTodayJobs).mockResolvedValueOnce([job(1, 'assigned')])
     vi.mocked(transitionJob).mockRejectedValue(new ApiError(409, 'conflict'))
     renderAt('/today')
 
     fireEvent.click(await within(await findRow(1)).findByRole('button', { name: 'Accept' }))
 
-    expect(await screen.findByText('Job changed; refreshed')).toBeInTheDocument()
+    expect(await screen.findByText('Job changed on the server; not applied.')).toBeInTheDocument()
     await waitFor(() => expect(listTodayJobs).toHaveBeenCalledTimes(2))
+    // The conflict card also reads "Job 1", so the job row is the item with the Accept button.
+    const jobRow = screen.getAllByRole('listitem').find((li) => within(li).queryByRole('button', { name: 'Accept' }))
+    expect(within(jobRow!).getByRole('button', { name: 'Accept' })).toBeDisabled()
   })
 
   it('stores the on-shift flag when the toggle is switched on', async () => {

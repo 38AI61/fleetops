@@ -146,3 +146,18 @@ Values come from the environment, like the names above. Unset or empty means the
 - Device key: `localStorage` key `fleetops.driver.deviceKey.v1`. It is not cleared on logout. It is cleared when ingest returns 401. The XSS exposure of `localStorage` is accepted for P14.
 - On-shift flag: `localStorage` key `fleetops.driver.onShift.v1` (`1` or `0`), default off.
 - Service worker: `autoUpdate`, app shell only, no API caching. A new build can reload a page mid-form (known limitation until P15).
+
+## Driver PWA offline queue (P15)
+
+- Store: IndexedDB `fleetops-driver`, version 1 (`apps/driver-pwa/src/offline/db.ts`). `actions` (keyPath `seq`, autoIncrement; indexes `by_job`, `by_key` = `${jobId}:${action}`, `by_user`). `snapshots` (keyPath `userId`).
+- Captured at the tap, before any request: accept, start, pickup, and deliver with photo (bytes, type, name, lat, lng). `fail`, login, refresh and ingest are not queued (GF-241).
+- Dedupe per user on `key` (GF-237). FIFO per job; jobs do not block each other (GF-238).
+- Replay triggers: boot (after `resetInFlight`), `online`, `visibilitychange` to visible, and a 30 s timer armed only while the queue is non-empty (`apps/driver-pwa/src/offline/replay.ts`). One pass at a time: `navigator.locks` `fleetops-driver-queue`, else an in-memory mutex.
+- Row states: `pending`, `in_flight`, `conflict`. 2xx deletes the row. 409, 404, 400 and 413 become `conflict` with `code` and a driver message, and the job's later rows wait. 503, 401 and network failure keep the row `pending` and end the pass (GF-240).
+- Driver actions: Retry (conflict to pending, then a pass) and Discard (deletes every row for that job). Any conflict refetches today. Nothing is removed without a driver action.
+- Snapshot: the last `GET /driver/jobs/today` per user is saved in `snapshots`. The today query runs offline (`networkMode: 'always'`) and falls back to the snapshot on a network `TypeError` only. The list shows the label "Offline — as of HH:MM". No age threshold (GF-239).
+- Logout does not clear the queue. Rows replay only for the same `sub` after login (GF-246).
+- `navigator.storage.persist()` is requested at boot, best-effort (GF-243).
+- Device key: the `localStorage` caveat is unchanged from P14.
+- Residual (GF-242): a deliver form that is not yet queued is lost on reload.
+- Manual follow-up, not automated: airplane-mode run against compose and the local API on `127.0.0.1:10013`. Confirm that reconnect replays in order and that conflicts show. Not run in P15.

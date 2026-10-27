@@ -1,6 +1,8 @@
 import { cleanup } from '@testing-library/react'
 import { afterEach } from 'vitest'
 import '@testing-library/jest-dom/vitest'
+// Real IndexedDB semantics for the offline queue (D-37).
+import 'fake-indexeddb/auto'
 
 // Node 26 ships an experimental localStorage global that is undefined without
 // --localstorage-file, and it hides jsdom's. Install an in-memory Storage only
