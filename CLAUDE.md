@@ -114,4 +114,7 @@ Values come from the environment, like the names above. Unset or empty means the
 - `FL409` = illegal transition or assignment change (API 409). `FL428` = actor missing (API 500, programming error).
 - `day` filter: `window_start` evaluated in `fleets.timezone`. A NULL window matches only when `day` is absent.
 - Publish: `jobs.events.<fleet_id>` on core NATS, no JetStream stream (GF-4). One message per applied transition after commit; the durable record is `job_events`.
-- Driver transitions (`accept`, `start`, `pickup`, `deliver`, `fail`) are P11. The store's `Transition` already implements their edges.
+- Driver routes (JWT, `driver` role only): `GET /driver/jobs/today`; `POST /driver/jobs/:id/accept|start|pickup` (empty body or `{}`); `POST /driver/jobs/:id/fail` with `{"reason"}` (trimmed, 1 to 1000 runes). `deliver` is P12.
+- Driver identity: the caller's driver row is `users.driver_id` in the principal's fleet. An unlinked driver gets `{"jobs":[]}` from `today` and 404 on transitions. Another driver's job, or a job of another fleet, is 404, checked before the replay.
+- Driver `today`: active jobs (not delivered, failed or cancelled) whose `window_start` day in `fleets.timezone` is on or before today, plus active jobs with no window. Order `window_start` ASC NULLS LAST, then id.
+- Fail reason: `fail` is valid from `accepted`, `en_route` and `picked_up` only. The reason is written in the same UPDATE as the state. It is not in `job_events` or the NATS body. A replayed fail keeps the first reason.
