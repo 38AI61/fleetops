@@ -161,3 +161,9 @@ Values come from the environment, like the names above. Unset or empty means the
 - Device key: the `localStorage` caveat is unchanged from P14.
 - Residual (GF-242): a deliver form that is not yet queued is lost on reload.
 - Manual follow-up, not automated: airplane-mode run against compose and the local API on `127.0.0.1:10013`. Confirm that reconnect replays in order and that conflicts show. Not run in P15.
+
+## E2E happy path (P16)
+
+- Run locally with `make e2e` (needs `npm --prefix e2e ci --include=dev`, `npx playwright install --with-deps chromium` in `e2e/`, and the `apps/web` and `apps/driver-pwa` installs).
+- CI runs the `e2e` job, which calls the same `make e2e` target.
+- The report lands in `e2e/playwright-report/` (traces and videos in `e2e/test-results/`).
