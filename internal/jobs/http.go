@@ -349,9 +349,12 @@ func (h *Handler) driverMove(to State) echo.HandlerFunc {
 		} else if err := bindEmptyObject(c); err != nil {
 			return writeErr(c, err)
 		}
-		ch, _, err := h.Svc.DriverTransition(c.Request().Context(), p.UserID, p.FleetID, id, driverID, to, reason)
+		ch, out, err := h.Svc.DriverTransition(c.Request().Context(), p.UserID, p.FleetID, id, driverID, to, reason)
 		if err != nil {
 			return writeErr(c, err)
+		}
+		if out == Applied {
+			publishChange(h.Events, ch)
 		}
 		return c.JSON(http.StatusOK, ch.Job)
 	}
