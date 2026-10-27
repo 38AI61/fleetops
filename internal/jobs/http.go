@@ -12,6 +12,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v4/middleware"
 
 	"fleetops/internal/apierr"
 	"fleetops/internal/auth"
@@ -40,6 +41,8 @@ type Handler struct {
 	Svc    *Store
 	Events Publisher
 	Now    func() time.Time
+	// Proofs stores delivery photos (P12). Nil means deliver answers 503 (GF-201).
+	Proofs ProofStore
 }
 
 // Register mounts the job routes. authn is auth.RequireAuth for the
@@ -59,6 +62,8 @@ func (h *Handler) Register(e *echo.Echo, authn echo.MiddlewareFunc) {
 	e.POST("/driver/jobs/:id/start", h.driverMove(StateEnRoute), authn, driver)
 	e.POST("/driver/jobs/:id/pickup", h.driverMove(StatePickedUp), authn, driver)
 	e.POST("/driver/jobs/:id/fail", h.driverMove(StateFailed), authn, driver)
+	// deliver takes a multipart photo, so it has its own 8M cap (GF-199). The global 64K cap skips this path.
+	e.POST("/driver/jobs/:id/deliver", h.deliver, authn, driver, middleware.BodyLimit(deliverBodyLimit))
 }
 
 // now is the request clock, time.Now when no clock is set.
@@ -423,6 +428,8 @@ func writeErr(c echo.Context, err error) error {
 		return apierr.Write(c, http.StatusConflict, apierr.Conflict)
 	case errors.Is(err, ErrVehicleNotActive):
 		return apierr.Write(c, http.StatusConflict, apierr.VehicleNotActive)
+	case errors.Is(err, errTooLarge):
+		return apierr.Write(c, http.StatusRequestEntityTooLarge, codePayloadTooLarge)
 	default:
 		return err
 	}

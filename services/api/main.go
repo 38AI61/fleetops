@@ -18,6 +18,7 @@ import (
 	"fleetops/internal/auth"
 	"fleetops/internal/config"
 	"fleetops/internal/ingest"
+	"fleetops/internal/proofs"
 )
 
 func main() {
@@ -57,6 +58,15 @@ func main() {
 		log.Fatalf("api: ensure %s stream: %v", ingest.StreamName, err)
 	}
 
+	// Proof photos (D-07, GF-201). Boot refuses to start when MinIO is unreachable or the bucket cannot be ensured.
+	proofStore, err := proofs.FromEnv(os.Getenv)
+	if err != nil {
+		log.Fatalf("api: proofs: %v", err)
+	}
+	if err := proofStore.EnsureBucket(context.Background()); err != nil {
+		log.Fatalf("api: ensure %s bucket: %v", proofs.Bucket, err)
+	}
+
 	e := NewServer(Deps{
 		DB:            db,
 		Issuer:        issuer,
@@ -67,6 +77,7 @@ func main() {
 		Gate:          ingest.NewGate(),
 		PresenceTTL:   cfg.PresenceTTL,
 		Events:        nc,
+		Proofs:        proofStore,
 	})
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
