@@ -9,11 +9,11 @@ GOLANGCI_LINT_VERSION := v2.15.0
 MIGRATE_VERSION := v4.18.3
 MIGRATE_ARGS ?= up
 
-.PHONY: help tools fmt-check lint test migrate seed seed-demo
+.PHONY: help tools fmt-check lint test migrate seed seed-demo e2e e2e-stack-up e2e-stack-down e2e-test
 .DEFAULT_GOAL := help
 
 help: ## list targets
-	@grep -hE '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | sed -E 's/:.*## /\t/' | awk -F'\t' '{printf "  %-10s %s\n", $$1, $$2}'
+	@grep -hE '^[a-zA-Z0-9_-]+:.*## ' $(MAKEFILE_LIST) | sed -E 's/:.*## /\t/' | awk -F'\t' '{printf "  %-10s %s\n", $$1, $$2}'
 
 tools: ## install pinned golangci-lint and migrate CLIs into GOPATH/bin
 	$(GO) install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
@@ -37,3 +37,15 @@ seed: ## bootstrap first fleet + admin (D-05); SEED_ARGS="--admin-email you@exam
 
 seed-demo: ## stub: demo fleet seed lands in P23
 	@echo "seed-demo: lands in P23 (roadmap)" >&2; exit 1
+
+e2e: ## happy-path E2E: stack up, Playwright spec, stack down (CI calls this)
+	@trap '$(MAKE) --no-print-directory e2e-stack-down' EXIT; $(MAKE) --no-print-directory e2e-stack-up && $(MAKE) --no-print-directory e2e-test
+
+e2e-stack-up: ## reset compose, migrate, seed, start Go services and Vite servers (e2e/scripts/stack.sh)
+	@GO="$(GO)" bash e2e/scripts/stack.sh up
+
+e2e-stack-down: ## stop e2e services and compose (keeps volumes); verify ports 10010-10013 are free
+	@bash e2e/scripts/stack.sh down
+
+e2e-test: ## run the Playwright spec against a running stack (sources deploy/.local/e2e.env)
+	@cd e2e && set -a && . ../deploy/.local/e2e.env && set +a && npx playwright test
