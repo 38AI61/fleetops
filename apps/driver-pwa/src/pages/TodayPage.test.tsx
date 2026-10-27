@@ -149,7 +149,7 @@ describe('TodayPage', () => {
     expect(await screen.findByText('No jobs for today.')).toBeInTheDocument()
   })
 
-  it('a 409 keeps the move queued and refetches the list', async () => {
+  it('a 409 shows the conflict, keeps the move queued and refetches the list', async () => {
     vi.mocked(listTodayJobs).mockResolvedValueOnce([job(1, 'assigned')])
     vi.mocked(listTodayJobs).mockResolvedValueOnce([job(1, 'assigned')])
     vi.mocked(transitionJob).mockRejectedValue(new ApiError(409, 'conflict'))
@@ -157,8 +157,11 @@ describe('TodayPage', () => {
 
     fireEvent.click(await within(await findRow(1)).findByRole('button', { name: 'Accept' }))
 
+    expect(await screen.findByText('Job changed on the server; not applied.')).toBeInTheDocument()
     await waitFor(() => expect(listTodayJobs).toHaveBeenCalledTimes(2))
-    expect(within(row(1)).getByRole('button', { name: 'Accept' })).toBeDisabled()
+    // The conflict card also reads "Job 1", so the job row is the item with the Accept button.
+    const jobRow = screen.getAllByRole('listitem').find((li) => within(li).queryByRole('button', { name: 'Accept' }))
+    expect(within(jobRow!).getByRole('button', { name: 'Accept' })).toBeDisabled()
   })
 
   it('stores the on-shift flag when the toggle is switched on', async () => {

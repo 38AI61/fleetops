@@ -5,7 +5,8 @@ import type { DriverJob } from '../api/types'
 import { ACTION_LABELS, actionsFor } from '../jobs/actions'
 import { loadDeviceKey } from '../device/key'
 import { useJobTransition, useTodayJobs } from '../jobs/queries'
-import { useQueue } from '../offline/useQueue'
+import { ConflictList } from '../offline/ConflictList'
+import { useOnline, useQueue } from '../offline/useQueue'
 import { setOnShift, useOnShift } from '../position/shift'
 import { useAuthState } from '../session/session'
 
@@ -28,7 +29,10 @@ export function TodayPage() {
   const hasKey = loadDeviceKey() !== null
   const arrival = useLocation().state as { queued?: boolean } | null
   const rows = jobs.data?.jobs
+  const online = useOnline()
   const queuedJobIds = new Set(queue.rows.map((row) => row.jobId))
+  const conflicts = queue.rows.filter((row) => row.status === 'conflict')
+  const pendingCount = queue.rows.length - conflicts.length
   const [notice, setNotice] = useState<string | null>(null)
 
   function act(job: DriverJob, action: TransitionAction) {
@@ -50,10 +54,16 @@ export function TodayPage() {
           On shift
         </label>
         <Link to="/setup-key">Device key</Link>
+        <p>
+          {!online && <span>Offline</span>}
+          {pendingCount > 0 && <span>{pendingCount} queued</span>}
+          {queue.syncing && <span>Syncing…</span>}
+        </p>
       </header>
       {!hasKey && <p role="status">Set up the device key first</p>}
       {arrival?.queued && <p role="status">{QUEUED_DELIVERY}</p>}
       {notice && <p role="alert">{notice}</p>}
+      <ConflictList userId={userId} conflicts={conflicts} />
       {jobs.isPending && <p role="status">Loading jobs…</p>}
       {jobs.isError && <p role="alert">Could not load jobs.</p>}
       {jobs.data?.stale && <p role="status">Offline — as of {formatTime(jobs.data.fetchedAt)}</p>}
