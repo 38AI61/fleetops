@@ -4,6 +4,8 @@ package main
 
 import (
 	"database/sql"
+	"net/http"
+	"regexp"
 	"time"
 
 	"github.com/labstack/echo/v4"
@@ -14,6 +16,7 @@ import (
 	"fleetops/internal/ingest"
 	"fleetops/internal/jobs"
 	"fleetops/internal/mapview"
+	"fleetops/internal/proofs"
 	"fleetops/internal/registry"
 	"fleetops/internal/users"
 )
@@ -22,11 +25,20 @@ import (
 // by policy, so this only blocks oversized payloads before argon2 runs.
 const maxBodyBytes = "64K"
 
+// deliverPath is the one route that takes a multipart photo (GF-199). It has its
+// own 8M BodyLimit, so the global 64K limit skips it.
+var deliverPath = regexp.MustCompile(`^/driver/jobs/[0-9]+/deliver$`)
+
+func skipDeliverBody(c echo.Context) bool {
+	return c.Request().Method == http.MethodPost && deliverPath.MatchString(c.Request().URL.Path)
+}
+
 // Deps are the collaborators NewServer needs. Tests inject a fake Clock.
 // DeviceKeySalt is the HMAC key for device keys and license hashes (GF-30).
 // NATS and Gate back POST /ingest/position (P4).
 // PresenceTTL is the map offline threshold (FLEETOPS_PRESENCE_TTL, GF-132).
 // Events publishes jobs.events after each applied job transition (GF-179).
+// Proofs stores delivery photos (P12, GF-201). Nil leaves deliver answering 503.
 type Deps struct {
 	DB            *sql.DB
 	Issuer        *auth.Issuer
@@ -37,14 +49,15 @@ type Deps struct {
 	Gate          *ingest.Gate
 	PresenceTTL   time.Duration
 	Events        jobs.Publisher
+	Proofs        *proofs.Store
 }
 
-// NewServer returns the API with every P2, P3, P4, P8, P10, and P11 route mounted.
+// NewServer returns the API with every P2 through P12 route mounted.
 func NewServer(d Deps) *echo.Echo {
 	e := echo.New()
 	e.HideBanner = true
 	e.Use(middleware.Recover())
-	e.Use(middleware.BodyLimit(maxBodyBytes))
+	e.Use(middleware.BodyLimitWithConfig(middleware.BodyLimitConfig{Skipper: skipDeliverBody, Limit: maxBodyBytes}))
 
 	store := users.NewStore(d.DB)
 	ah := &auth.Handlers{
@@ -68,6 +81,11 @@ func NewServer(d Deps) *echo.Echo {
 	rh.Register(e, auth.RequireAuth(d.Issuer))
 
 	jh := &jobs.Handler{Svc: &jobs.Store{DB: d.DB}, Events: d.Events, Now: d.Clock}
+	// Assign the interface only when the store exists: a nil *proofs.Store in an
+	// interface is not nil (GF-201).
+	if d.Proofs != nil {
+		jh.Proofs = d.Proofs
+	}
 	jh.Register(e, auth.RequireAuth(d.Issuer))
 
 	mh := &mapview.Handler{DB: d.DB, Clock: d.Clock, PresenceTTL: d.PresenceTTL, Jobs: &jobs.MapLookup{DB: d.DB}}

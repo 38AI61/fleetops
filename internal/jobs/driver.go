@@ -146,3 +146,86 @@ func (s *Store) DriverJobs(ctx context.Context, fleetID, driverID int64, now tim
 	}
 	return out, nil
 }
+
+// DriverDeliverGate is the read-only pre-check for POST /driver/jobs/:id/deliver
+// (GF-197). It runs before any body parse and before any upload. A job the driver
+// does not own in the fleet is ErrNotFound. A state other than picked_up or
+// delivered is ErrConflict. DriverDeliver re-checks both under the row lock.
+func (s *Store) DriverDeliverGate(ctx context.Context, fleetID, jobID, driverID int64) (State, error) {
+	var state string
+	err := s.DB.QueryRowContext(ctx,
+		`SELECT state FROM jobs WHERE id = $1 AND fleet_id = $2 AND driver_id = $3`,
+		jobID, fleetID, driverID).Scan(&state)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", ErrNotFound
+	}
+	if err != nil {
+		return "", fmt.Errorf("deliver gate: %w", err)
+	}
+	switch st := State(state); st {
+	case StatePickedUp, StateDelivered:
+		return st, nil
+	}
+	return "", ErrConflict
+}
+
+// DriverDeliver applies the picked_up -> delivered move with its proof (GF-194,
+// D-24). One transaction, in order: lock the row; the ownership guard returns
+// ErrNotFound before the replay (GF-187); delivered is a replay with no event and
+// the first proof key stays (D-24); any state other than picked_up is ErrConflict.
+// One UPDATE sets state, delivered_at, proof_photo and delivery_geom together. The
+// trigger writes the event.
+func (s *Store) DriverDeliver(ctx context.Context, actor, fleetID, jobID, driverID int64, photoKey string, lat, lng float64) (Change, Outcome, error) {
+	tx, err := s.begin(ctx, actor)
+	if err != nil {
+		return Change{}, Applied, err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	current, err := selectJob(ctx, tx, fleetID, jobID, true)
+	if err != nil {
+		return Change{}, Applied, err
+	}
+	if current.DriverID == nil || *current.DriverID != driverID {
+		return Change{}, Applied, ErrNotFound
+	}
+	if current.State == StateDelivered {
+		return replayed(tx, current)
+	}
+	if current.State != StatePickedUp {
+		return Change{}, Applied, ErrConflict
+	}
+
+	res, err := tx.ExecContext(ctx, `
+		UPDATE jobs
+		SET state = 'delivered', delivered_at = now(), proof_photo = $1,
+		    delivery_geom = ST_SetSRID(ST_MakePoint($2, $3), 4326)::geography
+		WHERE id = $4 AND fleet_id = $5 AND state = 'picked_up'`,
+		photoKey, lng, lat, jobID, fleetID)
+	if err != nil {
+		return Change{}, Applied, mapWriteErr(err)
+	}
+	if n, err := res.RowsAffected(); err != nil {
+		return Change{}, Applied, fmt.Errorf("rows affected: %w", err)
+	} else if n == 0 {
+		// D-24: zero rows, then re-read. The row lock makes this branch
+		// unreachable in practice; it keeps the rule as written.
+		now, err := selectJob(ctx, tx, fleetID, jobID, false)
+		if err != nil {
+			return Change{}, Applied, err
+		}
+		if now.State == StateDelivered {
+			return replayed(tx, now)
+		}
+		return Change{}, Applied, ErrConflict
+	}
+
+	change, err := appliedChange(ctx, tx, fleetID, jobID)
+	if err != nil {
+		return Change{}, Applied, err
+	}
+	if err := tx.Commit(); err != nil {
+		return Change{}, Applied, fmt.Errorf("commit driver deliver: %w", err)
+	}
+	return change, Applied, nil
+}

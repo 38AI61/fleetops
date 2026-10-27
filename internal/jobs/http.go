@@ -12,6 +12,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v4/middleware"
 
 	"fleetops/internal/apierr"
 	"fleetops/internal/auth"
@@ -40,6 +41,8 @@ type Handler struct {
 	Svc    *Store
 	Events Publisher
 	Now    func() time.Time
+	// Proofs stores delivery photos (P12). Nil means deliver answers 503 (GF-201).
+	Proofs ProofStore
 }
 
 // Register mounts the job routes. authn is auth.RequireAuth for the
@@ -59,6 +62,8 @@ func (h *Handler) Register(e *echo.Echo, authn echo.MiddlewareFunc) {
 	e.POST("/driver/jobs/:id/start", h.driverMove(StateEnRoute), authn, driver)
 	e.POST("/driver/jobs/:id/pickup", h.driverMove(StatePickedUp), authn, driver)
 	e.POST("/driver/jobs/:id/fail", h.driverMove(StateFailed), authn, driver)
+	// deliver takes a multipart photo, so it has its own 8M cap (GF-199). The global 64K cap skips this path.
+	e.POST("/driver/jobs/:id/deliver", h.deliver, authn, driver, middleware.BodyLimit(deliverBodyLimit))
 }
 
 // now is the request clock, time.Now when no clock is set.
@@ -91,7 +96,7 @@ type assignBody struct {
 }
 
 type listOut struct {
-	Jobs []Job `json:"jobs"`
+	Jobs []jobView `json:"jobs"`
 }
 
 // failBody is the POST /driver/jobs/:id/fail body (GF-188).
@@ -229,7 +234,7 @@ func (h *Handler) create(c echo.Context) error {
 	if err != nil {
 		return writeErr(c, err)
 	}
-	return c.JSON(http.StatusCreated, job)
+	return h.writeJob(c, http.StatusCreated, p.FleetID, job)
 }
 
 func (h *Handler) list(c echo.Context) error {
@@ -245,7 +250,11 @@ func (h *Handler) list(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	return c.JSON(http.StatusOK, listOut{Jobs: jobs})
+	views, err := h.views(c.Request().Context(), p.FleetID, jobs...)
+	if err != nil {
+		return err
+	}
+	return c.JSON(http.StatusOK, listOut{Jobs: views})
 }
 
 // assign assigns or reassigns (GF-175). Applied and replay are both 200.
@@ -272,7 +281,7 @@ func (h *Handler) assign(c echo.Context) error {
 	if out == Applied {
 		publishChange(h.Events, ch)
 	}
-	return c.JSON(http.StatusOK, ch.Job)
+	return h.writeJob(c, http.StatusOK, p.FleetID, ch.Job)
 }
 
 // cancel moves a job to cancelled (GF-176). Applied and replay are both 200.
@@ -295,7 +304,7 @@ func (h *Handler) cancel(c echo.Context) error {
 	if out == Applied {
 		publishChange(h.Events, ch)
 	}
-	return c.JSON(http.StatusOK, ch.Job)
+	return h.writeJob(c, http.StatusOK, p.FleetID, ch.Job)
 }
 
 // driverToday serves GET /driver/jobs/today (GF-185). An unlinked driver has no
@@ -310,13 +319,17 @@ func (h *Handler) driverToday(c echo.Context) error {
 		return err
 	}
 	if !linked {
-		return c.JSON(http.StatusOK, listOut{Jobs: []Job{}})
+		return c.JSON(http.StatusOK, listOut{Jobs: []jobView{}})
 	}
 	jobs, err := h.Svc.DriverJobs(c.Request().Context(), p.FleetID, driverID, h.now())
 	if err != nil {
 		return err
 	}
-	return c.JSON(http.StatusOK, listOut{Jobs: jobs})
+	views, err := h.views(c.Request().Context(), p.FleetID, jobs...)
+	if err != nil {
+		return err
+	}
+	return c.JSON(http.StatusOK, listOut{Jobs: views})
 }
 
 // driverMove serves one driver transition (GF-186..GF-188). The caller's driver
@@ -356,7 +369,7 @@ func (h *Handler) driverMove(to State) echo.HandlerFunc {
 		if out == Applied {
 			publishChange(h.Events, ch)
 		}
-		return c.JSON(http.StatusOK, ch.Job)
+		return h.writeJob(c, http.StatusOK, p.FleetID, ch.Job)
 	}
 }
 
@@ -423,6 +436,8 @@ func writeErr(c echo.Context, err error) error {
 		return apierr.Write(c, http.StatusConflict, apierr.Conflict)
 	case errors.Is(err, ErrVehicleNotActive):
 		return apierr.Write(c, http.StatusConflict, apierr.VehicleNotActive)
+	case errors.Is(err, errTooLarge):
+		return apierr.Write(c, http.StatusRequestEntityTooLarge, codePayloadTooLarge)
 	default:
 		return err
 	}

@@ -52,7 +52,7 @@ Run from the repo root. `make help` lists every target.
 - Pins: Go 1.27.3 (`go.mod` toolchain line); golangci-lint v2.15.0 and golang-migrate CLI v4.18.3 (built with `-tags postgres`) in the Makefile.
 - Host override: `deploy/.local/tools.mk` (gitignored) may set `GO`, `GOFMT`, `GOLANGCI_LINT`, `MIGRATE` to host paths. The Makefile includes it.
 - `make migrate` requires `DATABASE_URL` in the environment; it is not read from `deploy/.env`.
-- Local API: `DATABASE_URL=… JWT_SECRET=… DEVICE_KEY_SALT=… NATS_URL=nats://127.0.0.1:10004 REDIS_URL=redis://127.0.0.1:10003 go run ./services/api` listens on `127.0.0.1:10010` (`-addr` overrides). It does not run migrations.
+- Local API: `DATABASE_URL=… JWT_SECRET=… DEVICE_KEY_SALT=… NATS_URL=nats://127.0.0.1:10004 REDIS_URL=redis://127.0.0.1:10003 MINIO_ENDPOINT=127.0.0.1:10006 MINIO_KEY=… MINIO_SECRET=… go run ./services/api` listens on `127.0.0.1:10010` (`-addr` overrides). It does not run migrations. MinIO must be reachable at boot (P12).
 - Local ingest consumer: same env as the API, `DATABASE_URL=… JWT_SECRET=… DEVICE_KEY_SALT=… NATS_URL=nats://127.0.0.1:10004 REDIS_URL=redis://127.0.0.1:10003 go run ./services/ingest`. No listener; it drains `GPS_RAW` into `positions`, publishes to Redis, and runs partition maintenance.
 - Local WS hub: same env as the API, `DATABASE_URL=… JWT_SECRET=… DEVICE_KEY_SALT=… NATS_URL=nats://127.0.0.1:10004 REDIS_URL=redis://127.0.0.1:10003 go run ./services/ws-hub` listens on `127.0.0.1:10011` (`-addr` overrides). It does not connect to Postgres. Clients open `WS /stream?fleet=<id>` and send `{"type":"auth","token":…}` as the first frame.
 - Local simulator (P8): `go run ./tools/simulator --fleet=50 --rate=5s --api http://127.0.0.1:10010`. It reads `deploy/.local/devices.json` and needs no env vars.
@@ -114,7 +114,17 @@ Values come from the environment, like the names above. Unset or empty means the
 - `FL409` = illegal transition or assignment change (API 409). `FL428` = actor missing (API 500, programming error).
 - `day` filter: `window_start` evaluated in `fleets.timezone`. A NULL window matches only when `day` is absent.
 - Publish: `jobs.events.<fleet_id>` on core NATS, no JetStream stream (GF-4). One message per applied transition after commit; the durable record is `job_events`.
-- Driver routes (JWT, `driver` role only): `GET /driver/jobs/today`; `POST /driver/jobs/:id/accept|start|pickup` (empty body or `{}`); `POST /driver/jobs/:id/fail` with `{"reason"}` (trimmed, 1 to 1000 runes). `deliver` is P12.
+- Driver routes (JWT, `driver` role only): `GET /driver/jobs/today`; `POST /driver/jobs/:id/accept|start|pickup` (empty body or `{}`); `POST /driver/jobs/:id/fail` with `{"reason"}` (trimmed, 1 to 1000 runes).
 - Driver identity: the caller's driver row is `users.driver_id` in the principal's fleet. An unlinked driver gets `{"jobs":[]}` from `today` and 404 on transitions. Another driver's job, or a job of another fleet, is 404, checked before the replay.
 - Driver `today`: active jobs (not delivered, failed or cancelled) whose `window_start` day in `fleets.timezone` is on or before today, plus active jobs with no window. Order `window_start` ASC NULLS LAST, then id.
 - Fail reason: `fail` is valid from `accepted`, `en_route` and `picked_up` only. The reason is written in the same UPDATE as the state. It is not in `job_events` or the NATS body. A replayed fail keeps the first reason.
+
+## Proof of delivery (P12)
+
+- Deliver route: `POST /driver/jobs/:id/deliver`, driver role only, own jobs only, valid from `picked_up` only. Multipart fields: `photo` (file; type sniffed by `http.DetectContentType` on the first 512 bytes, declared Content-Type ignored; JPEG, PNG or WebP; at most 5242880 bytes), `lat` and `lng` (text, finite, lat in [-90, 90], lng in [-180, 180]).
+- Success is 200 with the job object. A replay of `delivered` is 200 with no event, no publish and no upload; the body is still validated.
+- Errors: 400 `validation_failed`; 404 for wrong driver, cross-fleet or malformed id; 409 for any other state; 413 `payload_too_large` for a photo over 5 MiB; 503 `proofs_unavailable` when no proof store is configured. Nothing is stored on any refusal from the gate or body checks.
+- Object key `proofs/<fleet_id>/<job_id>/<uuid>.<ext>` in bucket `proofs`. The key is stored verbatim in `jobs.proof_photo`. The same UPDATE sets `delivered_at` and `delivery_geom`.
+- Presigned URLs: every job object has `proof_photo_url`, a presigned GET valid 15 minutes, signed on read and never stored. It is null when the job has no proof.
+- Body limits: the deliver route allows 8M; every other route keeps the global 64K.
+- Boot: the API requires `MINIO_ENDPOINT`, `MINIO_KEY` and `MINIO_SECRET`, ensures the `proofs` bucket, and refuses to start if either step fails.

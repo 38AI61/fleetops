@@ -232,6 +232,28 @@ func TestRoleMatrix(t *testing.T) {
 		}
 	}
 
+	// P12 deliver row (GF-206). The driver cell sends a valid multipart photo with
+	// lat and lng and gets 200. The other cells send no body, because the role
+	// check runs before any body read. Each cell gets its own picked_up job, so a
+	// 2xx in one cell cannot change the job another cell sees. The row is a
+	// separate loop: the rows above use positional literals, and a content type
+	// field would touch every one of them.
+	deliverJob := driverJob("deliver", jobs.StateAccepted, jobs.StateEnRoute, jobs.StatePickedUp)
+	deliverWant := [5]int{forb, forb, forb, ok200, unau}
+	for i, c := range roleCols {
+		path := deliverJob()
+		ctype, body := "", []byte(nil)
+		if c.role == "driver" {
+			ctype, body = deliverForm(t, jpegPhoto, validCoords)
+		}
+		t.Run("POST /driver/jobs/:id/deliver/"+c.name, func(t *testing.T) {
+			r := h.send(t, http.MethodPost, path, tokens[c.role], ctype, body)
+			if r.status != deliverWant[i] {
+				t.Fatalf("status = %d (%s), want %d", r.status, r.body, deliverWant[i])
+			}
+		})
+	}
+
 	// Login, refresh, and logout take no JWT; their expected results come from §8.
 	t.Run("no-JWT/POST /auth/login valid credentials", func(t *testing.T) {
 		r := h.do(t, http.MethodPost, "/auth/login", "",

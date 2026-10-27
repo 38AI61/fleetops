@@ -18,6 +18,7 @@ import (
 	"fleetops/internal/config"
 	"fleetops/internal/ingest"
 	"fleetops/internal/jobs"
+	"fleetops/internal/proofs/prooftest"
 	"fleetops/internal/testinfra"
 	"fleetops/internal/users"
 )
@@ -86,6 +87,7 @@ func startServerEvents(t *testing.T, events jobs.Publisher) *harness {
 		Gate:          gate,
 		PresenceTTL:   config.DefaultPresenceTTL,
 		Events:        events,
+		Proofs:        prooftest.SharedStore(t),
 	})
 
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
