@@ -10,13 +10,14 @@ import (
 
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
+	"github.com/testcontainers/testcontainers-go"
 	miniomodule "github.com/testcontainers/testcontainers-go/modules/minio"
 
 	"fleetops/internal/proofs"
 )
 
 // Image is the MinIO server image for tests. Compose uses the same tag (GF-205).
-const Image = "minio/minio:RELEASE.2025-04-22T22-12-26Z"
+const Image = "bitnamilegacy/minio:2025.7.23-debian-12-r5"
 
 // rootUser and rootPassword are the local-dev defaults, never a real secret.
 const (
@@ -40,7 +41,9 @@ func start() {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
 	shared.ctr, shared.err = miniomodule.Run(ctx, Image,
-		miniomodule.WithUsername(rootUser), miniomodule.WithPassword(rootPassword))
+		miniomodule.WithUsername(rootUser), miniomodule.WithPassword(rootPassword),
+		// Bitnami's default user 1001 cannot write the data paths (GF-208).
+		testcontainers.CustomizeRequest(testcontainers.GenericContainerRequest{ContainerRequest: testcontainers.ContainerRequest{User: "root"}}))
 	if shared.err != nil {
 		return
 	}

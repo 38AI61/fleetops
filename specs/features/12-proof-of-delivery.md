@@ -105,6 +105,7 @@ Roadmap P12 (proof of delivery), server side plus compose.
 - **GF-205 — Compose service.** Ports, binding, volume as in Scope. Credentials default to `minioadmin` when `MINIO_KEY`/`MINIO_SECRET` are unset, matching the postgres local-dev default. Compose is never started here. The stale "phase 3" comment is corrected. *Why:* compose renders without a `deploy/.env` present.
 - **GF-206 — Role-matrix row fixture.** One row per R-6 (G6). The driver case sends a valid multipart body; the 403 cases send no body (role check runs first). *Why:* exercises the real 2xx path, not a shortcut.
 - **GF-207 — CLAUDE.md.** Mechanical rows only (G7). No new env var names beyond the three already listed, no new make targets, no migrations. File stays under 200 lines. *Why:* CLAUDE.md is the mechanical reference; decisions live in this spec.
+- **GF-208 — MinIO image registry substitution.** Upstream's `minio/minio` Docker Hub repository is no longer publicly pullable (HTTP 404 at repository level, verified 2026-10-27; quay requires auth, public ECR lacks the repo, ghcr denied). Tests and compose use `bitnamilegacy/minio:2025.7.23-debian-12-r5`, Bitnami's packaging of upstream `RELEASE.2025-07-23T19-17-31Z`. `prooftest` runs the container as `User: root` via `testcontainers.CustomizeRequest` because Bitnami's default `1001` cannot write its data paths; S3/console ports and `MINIO_ROOT_USER`/`MINIO_ROOT_PASSWORD` semantics are unchanged. *Why:* the pinned image is unpullable in this environment; the substitute preserves the intended upstream version.
 
 ## Validation
 
