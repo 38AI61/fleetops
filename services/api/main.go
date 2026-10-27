@@ -66,6 +66,7 @@ func main() {
 		NATS:          js,
 		Gate:          ingest.NewGate(),
 		PresenceTTL:   cfg.PresenceTTL,
+		Events:        nc,
 	})
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

@@ -105,3 +105,13 @@ Values come from the environment, like the names above. Unset or empty means the
 - Typecheck only: `npm --prefix apps/web run typecheck`
 - Unit and component tests: `npm --prefix apps/web test`
 - Dev proxy: `/auth`, `/map`, `/vehicles` → `127.0.0.1:10010`; `/stream` → `127.0.0.1:10011` (WebSocket)
+
+## Jobs (P10)
+
+- Dispatcher routes (JWT; admin and dispatcher unless noted): `POST /jobs` (state `created`, unassigned), `GET /jobs?state=&driver=&day=` (admin, manager, dispatcher), `POST /jobs/:id/assign` with `{"vehicle_id","driver_id"}` (also reassigns while `assigned`), `POST /jobs/:id/cancel` (empty body or `{}`).
+- Every jobs mutation runs `SELECT set_config('app.actor_id', …, true)` as its first statement; the trigger writes `job_events`. A state or assignment change without that setting fails with `FL428`.
+- D-23 edges live in `internal/jobs/transitions.go`; `job_transitions` mirrors them for the trigger.
+- `FL409` = illegal transition or assignment change (API 409). `FL428` = actor missing (API 500, programming error).
+- `day` filter: `window_start` evaluated in `fleets.timezone`. A NULL window matches only when `day` is absent.
+- Publish: `jobs.events.<fleet_id>` on core NATS, no JetStream stream (GF-4). One message per applied transition after commit; the durable record is `job_events`.
+- Driver transitions (`accept`, `start`, `pickup`, `deliver`, `fail`) are P11. The store's `Transition` already implements their edges.
