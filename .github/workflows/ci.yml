@@ -65,3 +65,54 @@ jobs:
       - name: Remove postgres container
         if: always()
         run: docker rm -f fleetops-ci-pg
+
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Put GOPATH bin on PATH
+        run: echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+      - name: Install pinned tools
+        run: make tools
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            apps/web/package-lock.json
+            apps/driver-pwa/package-lock.json
+            e2e/package-lock.json
+
+      - name: Install web dependencies
+        run: npm --prefix apps/web ci --include=dev
+
+      - name: Install driver PWA dependencies
+        run: npm --prefix apps/driver-pwa ci --include=dev
+
+      - name: Install e2e dependencies
+        run: npm --prefix e2e ci --include=dev
+
+      - name: Install Chromium
+        run: (cd e2e && npx playwright install --with-deps chromium)
+
+      - name: Run happy-path e2e
+        run: make e2e
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            e2e/playwright-report/
+            e2e/test-results/
+          retention-days: 7
