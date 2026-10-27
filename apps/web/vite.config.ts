@@ -12,6 +12,7 @@ export default defineConfig({
     proxy: {
       '/auth': { target: 'http://127.0.0.1:10010', changeOrigin: false },
       '/map': { target: 'http://127.0.0.1:10010', changeOrigin: false },
+      '/jobs': { target: 'http://127.0.0.1:10010', changeOrigin: false },
       '/vehicles': { target: 'http://127.0.0.1:10010', changeOrigin: false },
       '/stream': { target: 'http://127.0.0.1:10011', ws: true, changeOrigin: false },
     },

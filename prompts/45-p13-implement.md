@@ -1,0 +1,13 @@
+# P13 implement — dispatcher assignment UI & nearest-van suggestion (pointer)
+
+Goal: implement roadmap phase P13 of this repo exactly per the approved feature spec `specs/features/13-dispatcher-assignment-ui.md`. That spec is the complete instruction.
+
+Context: read first, in this order — `specs/features/13-dispatcher-assignment-ui.md` (the binding task list: its task groups G0… in order, requirements GF-209+ as written, validation section, testing depth), `specs/constitution/roadmap.md` §1 (R-1…R-9) and §3 **P13**, `specs/constitution/tech-stack.md` §2/§9/§11 (D-23, D-26, D-27, D-38, D-37; pins are exact), `specs/features/10-job-core.md` (GF-170…GF-182 — job store/HTTP/publish seams you build on), `specs/features/12-proof-of-delivery.md` (latest spec conventions and the GF-196 job-object shape), `CLAUDE.md`, `AGENTS.md`. The spec cites the earlier GF decisions you reuse — do not restate or re-implement them.
+
+Task groups: execute every task group of the spec in order, G0 first (preflight: baseline gates green, migrations end at `009_jobs_core`, GF-208 is the highest decision id, verify the spec's G0 facts — stop and report if any fails). One commit per task group, message style like the P12 history (`git log --oneline -12` shows it: short imperative subject, group marker like `(G3)` in the body where the P12 history used it). Every task group's tests are part of that group's commit — a group is not done until its named tests pass.
+
+Done when: every Validation check in the spec passes, run by you (the watchdog re-runs them independently — a check that fails on re-run fails the phase). The validation commands this repo uses: `make fmt-check`, `make lint`, `make test` (go at /root/.local/go/bin/go, lint at /root/.local/bin/golangci-lint, migrate at /root/go/bin/migrate — already on PATH via the Makefile), and in `apps/web`: `npm ci --include=dev`, `npm run typecheck`, `npm test`, `npm run build`. Known flake: `internal/hub` — an isolated re-run is permitted before treating any failure as real (you will not touch hub code; the flake note is for your test runs only). Respect the spec's scope fence exactly — `git diff --name-only main...HEAD` must never touch a forbidden path; if you believe a fence path is wrong, stop and report instead of editing it.
+
+Out of scope: README.md (never edited), merge to main, push, compose start, migrations (none in this phase), next phases (P14+), hub changes, `internal/config`/`internal/testinfra`, any file outside the spec's fence.
+
+Report: files per task group, the commands you ran with their exit codes, the final `git log --oneline main..HEAD`, and the spec's validation checklist with each item's pass/fail.

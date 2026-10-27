@@ -39,6 +39,17 @@ export async function getJson<T>(path: string): Promise<T> {
   return (await res.json()) as T
 }
 
+// Mutations send a JSON body and answer JSON. Errors map to ApiError like getJson.
+export async function sendJson<T>(method: string, path: string, body: unknown): Promise<T> {
+  const res = await apiFetch(path, {
+    method,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) throw new ApiError(res.status, await errorCode(res))
+  return (await res.json()) as T
+}
+
 async function errorCode(res: Response): Promise<string> {
   try {
     const body = (await res.json()) as { error?: unknown }

@@ -1,6 +1,8 @@
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { useEffect, useRef } from 'react'
 import { Map as MapLibreMap, type GeoJSONSource, type StyleSpecification } from 'maplibre-gl'
+import type { LatLng } from '../api/types'
+import { marksCollection, type PickMarks } from '../jobs/pick'
 import type { VehicleCollection } from '../status/display'
 import { bboxParam } from './bbox'
 
@@ -19,9 +21,13 @@ export interface MapViewProps {
   onInteraction: (event: InteractionEvent) => void
   // Camera center for follow mode. Zoom is left alone (GF-161).
   followTarget: [number, number] | null
+  // Pick mode (GF-219). When onMapClick is set, an empty-space click calls it instead of onDeselect.
+  onMapClick?: (point: LatLng) => void
+  marks?: PickMarks
 }
 
 const SOURCE_ID = 'vehicles'
+const PICKS_SOURCE_ID = 'picks'
 const BOUNDS_DEBOUNCE_MS = 400
 
 // Background only. P9 renders no basemap tiles, so the style works offline (GF-158).
@@ -93,6 +99,18 @@ export function MapView(props: MapViewProps) {
           'circle-opacity': ['case', ['get', 'grayed'], 0.45, 1],
         },
       })
+      map.addSource(PICKS_SOURCE_ID, { type: 'geojson', data: marksCollection(propsRef.current.marks ?? {}) })
+      map.addLayer({
+        id: 'picks',
+        type: 'circle',
+        source: PICKS_SOURCE_ID,
+        paint: {
+          'circle-radius': 6,
+          'circle-color': ['match', ['get', 'kind'], 'pickup', '#16a34a', '#dc2626'],
+          'circle-stroke-color': '#ffffff',
+          'circle-stroke-width': 2,
+        },
+      })
       loadedRef.current = true
       scheduleBounds()
     })
@@ -104,7 +122,8 @@ export function MapView(props: MapViewProps) {
     map.on('click', (e) => {
       const [hit] = map.queryRenderedFeatures(e.point, { layers: ['clusters', 'unclustered'] })
       if (!hit) {
-        propsRef.current.onDeselect()
+        if (propsRef.current.onMapClick) propsRef.current.onMapClick({ lat: e.lngLat.lat, lng: e.lngLat.lng })
+        else propsRef.current.onDeselect()
         return
       }
       if (hit.layer.id === 'clusters') {
@@ -133,6 +152,13 @@ export function MapView(props: MapViewProps) {
     if (!map || !loadedRef.current) return
     map.getSource<GeoJSONSource>(SOURCE_ID)?.setData(props.collection)
   }, [props.collection])
+
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !loadedRef.current) return
+    map.getSource<GeoJSONSource>(PICKS_SOURCE_ID)?.setData(marksCollection(props.marks ?? {}))
+    // Keyed on the points, not the marks object, so a parent re-render does not re-set the data.
+  }, [props.marks?.pickup, props.marks?.dropoff])
 
   useEffect(() => {
     const map = mapRef.current
