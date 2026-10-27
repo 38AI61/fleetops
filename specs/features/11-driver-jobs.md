@@ -50,7 +50,7 @@ Roadmap P11 (driver job API), server side only.
   - ownership: another driver's job, an unlinked driver, a cross-fleet job → `ErrNotFound`, no event written.
   - `fail` writes `failure_reason`.
   - replay → `Replayed`, no event; a second `fail` with a different reason keeps the first.
-  - illegal edge (e.g. `assigned→failed`, `accepted→en_route` from `created`) → `ErrConflict`.
+  - illegal edge (e.g. `assigned→failed`, `assigned→en_route`) → `ErrConflict`. A `created` job has no driver, so a driver's move on it is `ErrNotFound` (GF-187), not `ErrConflict`.
   - `to = delivered` or `assigned` → `ErrValidation`.
   - event count per job matches the applied transitions.
 
@@ -140,7 +140,7 @@ Every check runs on this host. Docker is available; compose is not started.
 | Services/API harness (`services/api`) | `TestDriverToday` | own jobs scheduled today in a non-UTC fleet timezone (fake `Deps.Clock`); undated active job included; carried-over active job included; future-dated excluded; `delivered`/`failed`/`cancelled` excluded; other driver's jobs excluded; unlinked driver → `200 {"jobs":[]}`; envelope and ordering |
 | Services/API harness | `TestDriverCrossDriverIsolation` | A's accept/start/pickup/fail on B's job → `404`, state and event count unchanged; A's `today` excludes B's and includes A's; cross-fleet job → `404` |
 | Services/API harness | `TestDriverReplay` | accept twice → two `200`, one `assigned→accepted` event; start/pickup replayed → `200`, no event; fail twice → two `200`, one event, reason unchanged by second call |
-| Services/API harness | `TestDriverTransitionValidation` | `fail` with no body, empty reason, whitespace reason, 1001 runes, unknown field → `400`; accept on `created` → `409`; malformed id → `404`; non-driver roles → `403` before body read |
+| Services/API harness | `TestDriverTransitionValidation` | `fail` with no body, empty reason, whitespace reason, 1001 runes, unknown field → `400`; accept on `cancelled` (still tied to the driver) → `409`; accept on an unowned `created` job → `404` (GF-187); malformed id → `404`; non-driver roles → `403` before body read |
 | Services/API + NATS | `TestDriverJobsPublish` | each applied driver transition → exactly one message on `jobs.events.<fleet_id>` with non-null `driver_id`; replay, `409`, `404` → none |
 | Role matrix (R-6) | `TestRoleMatrix` (extended) | five new rows, driver-only cells |
 | Race | `make test` with `-race` | all packages |
