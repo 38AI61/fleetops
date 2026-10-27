@@ -218,3 +218,39 @@ The GF-192 hub identity binding remains open and belongs to P23, as stated in P1
 - Changes to `README.md`, `deploy/PORTS.md`, `deploy/docker-compose.yml`, `specs/constitution/`, the hub origin allowlist, or the dispatcher web app.
 - Starting compose, merging to `main`, pushing, CI wiring.
 - Any P15+ content.
+
+## Execution record
+
+Run on branch `phase-14-driver-pwa-online` at G7 (`0e9104a`) plus the G8 changes (CLAUDE.md block, this record). Host has Docker, so PostGIS tests ran (no skips).
+
+Automated checks (exit codes):
+
+| # | Check | Result |
+|---|---|---|
+| 1 | `make fmt-check` | 0 |
+| 1 | `make lint` | 0 (0 issues) |
+| 1 | `make test` | 0 (24 packages ok, 0 FAIL, 0 skip) |
+| 2 | `npm --prefix apps/web ci --include=dev` | 0 (clean install) |
+| 2 | `npm --prefix apps/web run typecheck` | 0 |
+| 2 | `npm --prefix apps/web test` | 0 (68 tests) |
+| 2 | `npm --prefix apps/web run build` | 0 |
+| 3 | `npm --prefix apps/driver-pwa ci --include=dev` | 0 (clean install) |
+| 3 | `npm --prefix apps/driver-pwa run typecheck` | 0 |
+| 3 | `npm --prefix apps/driver-pwa test` | 0 (12 files, 82 tests; BINDING `actions.test.ts` 13 rows and `key.test.ts` 17 rows pass) |
+| 3 | `npm --prefix apps/driver-pwa run build` | 0 (`check-pwa-build: ok`) |
+| 4 | scope fence `git diff --name-only main...HEAD \| grep -vE …` | empty |
+| 4 | `git check-ignore apps/driver-pwa/node_modules apps/driver-pwa/dist` | both ignored; no `node_modules` or `dist` in `git status` |
+| 4 | `fo_dev_` key-shaped strings in diff | none (fixtures are built with `'A'.repeat(43)`) |
+| 4 | `wc -l CLAUDE.md` | 148 (< 200) |
+
+Manual follow-up (Validation §5): not run. It needs compose, a seeded API, a `kind=pwa` device, and a Chrome install, none of which ran here. Recorded as open.
+
+Deviations from the spec text:
+
+- GF-226: the installed `vite-plugin-pwa` 2.0.0 option is `strategies`, not `strategy`. The value is still `'generateSW'`.
+- Test setup (`src/test/setup.ts`): Node 26 defines an experimental `localStorage` global that is undefined without `--localstorage-file`, and it hides jsdom's. The setup installs an in-memory `Storage` only when the global is not functional.
+- Files beyond the G1–G7 lists: `api/types.ts`, `api/ingest.ts`, `api/driver.test.ts`, `api/queryClient.ts`, `session/refresh.ts`, `session/logout.ts`, `session/boot.ts` (the refresh-cookie boot the spec's GF-227 implies), `routes/guards.tsx`, `position/geo.ts`, `position/shift.ts`, `test/session.ts`, `test/render.tsx`.
+- `useJobTransition` and `useDeliverJob` invalidate the Today query on settle (success or error), so a 409 refetches.
+- The position reporter mounts in `RequireDeviceKey`, so it stops while the driver is on `/setup-key`.
+
+Known limitations carried into P15: the `autoUpdate` reload can interrupt a form (GF-226), and `localStorage` holds the device key (GF-228).
