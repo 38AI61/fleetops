@@ -134,3 +134,15 @@ Values come from the environment, like the names above. Unset or empty means the
 - `GET /jobs/:id/nearest?limit=` (JWT; admin, manager and dispatcher; driver 403). The job must be in the caller's fleet, and a missing, cross-fleet or malformed id is 404. `limit` defaults to 10 and must be an integer 1..50, else 400 `validation_failed`. No job-state gate.
 - Response: `{"job_id", "candidates": [{"vehicle_id", "plate", "driver_id", "driver_name", "distance_m", "lat", "lng", "server_ts"}]}`, ordered by `ST_Distance` then vehicle id. `distance_m` is rounded to 0.1 m. Candidates are active vehicles with a latest position and an open pairing to a driver of the fleet.
 - UI routes (login required): `/jobs` lists jobs with state, driver and day filters, and opens the assignment panel from a created or assigned row. `/jobs/new` picks pickup and dropoff on the map beside the create form.
+
+## Driver PWA (P14)
+
+- Install: `npm --prefix apps/driver-pwa ci --include=dev`
+- Dev server: `npm --prefix apps/driver-pwa run dev` → `http://127.0.0.1:10013` (`strictPort`; GF-225 uses 10013, not the roadmap's 5174)
+- Build (typecheck, build, PWA artifact check): `npm --prefix apps/driver-pwa run build`
+- Preview (serves the built service worker): `npm --prefix apps/driver-pwa run preview` → `http://127.0.0.1:10013`
+- Typecheck only: `npm --prefix apps/driver-pwa run typecheck`. Tests: `npm --prefix apps/driver-pwa test`
+- Dev and preview proxy: `/auth`, `/driver`, `/ingest` → `127.0.0.1:10010`. No `/stream`, `/jobs`, `/vehicles` or `/map`. A later WebSocket from this origin must add `127.0.0.1:10013` to the hub allowlist (GF-110).
+- Device key: `localStorage` key `fleetops.driver.deviceKey.v1`. It is not cleared on logout. It is cleared when ingest returns 401. The XSS exposure of `localStorage` is accepted for P14.
+- On-shift flag: `localStorage` key `fleetops.driver.onShift.v1` (`1` or `0`), default off.
+- Service worker: `autoUpdate`, app shell only, no API caching. A new build can reload a page mid-form (known limitation until P15).
