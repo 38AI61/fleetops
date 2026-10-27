@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { listTodayJobs, transitionJob, type TransitionAction } from '../api/driver'
+import { deliverJob, listTodayJobs, transitionJob, type TransitionAction } from '../api/driver'
 
 export const TODAY_QUERY_KEY = ['driver', 'jobs', 'today'] as const
 
@@ -21,6 +21,15 @@ export function useJobTransition() {
   return useMutation({
     mutationFn: ({ id, action }: { id: number; action: TransitionAction }) =>
       transitionJob(id, action),
+    onSettled: () => client.invalidateQueries({ queryKey: TODAY_QUERY_KEY }),
+  })
+}
+
+// A delivery settles the same way as a transition: the list refetches either way.
+export function useDeliverJob() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, form }: { id: number; form: FormData }) => deliverJob(id, form),
     onSettled: () => client.invalidateQueries({ queryKey: TODAY_QUERY_KEY }),
   })
 }

@@ -109,7 +109,7 @@ describe('TodayPage', () => {
 
     fireEvent.click(await within(await findRow(1)).findByRole('button', { name: 'Accept' }))
 
-    expect(await screen.findByText('Job changed; refreshed.')).toBeInTheDocument()
+    expect(await screen.findByText('Job changed; refreshed')).toBeInTheDocument()
     await waitFor(() => expect(listTodayJobs).toHaveBeenCalledTimes(2))
   })
 })

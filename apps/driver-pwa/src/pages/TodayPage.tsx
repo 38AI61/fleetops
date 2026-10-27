@@ -13,7 +13,7 @@ const STATE_LABELS: Record<string, string> = {
   picked_up: 'Picked up',
 }
 
-const CHANGED_MESSAGE = 'Job changed; refreshed.'
+const CHANGED_MESSAGE = 'Job changed; refreshed'
 const FAILED_MESSAGE = 'Could not update the job. Try again.'
 
 export function TodayPage() {
