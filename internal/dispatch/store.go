@@ -5,6 +5,7 @@ package dispatch
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 )
@@ -26,6 +27,14 @@ CROSS JOIN pt
 WHERE v.fleet_id = $1 AND v.status = 'active'
 ORDER BY ST_Distance(vl.geom, pt.g) ASC, vl.vehicle_id ASC
 LIMIT $4`
+
+// ErrNotFound means the job is missing or belongs to another fleet (GF-213).
+var ErrNotFound = errors.New("dispatch: not found")
+
+// pickupSQL reads the job's pickup in the caller's fleet only (GF-213). There is no state gate.
+const pickupSQL = `
+SELECT ST_Y(pickup::geometry), ST_X(pickup::geometry)
+FROM jobs WHERE id = $1 AND fleet_id = $2`
 
 // Store reads nearest candidates from the caller's database.
 type Store struct {
@@ -65,4 +74,18 @@ func (s *Store) Nearest(ctx context.Context, fleetID int64, lat, lng float64, li
 		return nil, fmt.Errorf("nearest rows: %w", err)
 	}
 	return out, nil
+}
+
+// JobPickup returns the pickup of job jobID in fleetID as (lat, lng). A missing
+// or cross-fleet job is ErrNotFound.
+func (s *Store) JobPickup(ctx context.Context, fleetID, jobID int64) (float64, float64, error) {
+	var lat, lng float64
+	err := s.DB.QueryRowContext(ctx, pickupSQL, jobID, fleetID).Scan(&lat, &lng)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, 0, ErrNotFound
+	}
+	if err != nil {
+		return 0, 0, fmt.Errorf("job pickup: %w", err)
+	}
+	return lat, lng, nil
 }

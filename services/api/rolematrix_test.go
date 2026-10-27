@@ -164,6 +164,10 @@ func TestRoleMatrix(t *testing.T) {
 		{"POST /jobs/:id/cancel", http.MethodPost, "/jobs/0/cancel", func(int) string { return "" },
 			[5]int{ok200, forb, ok200, forb, unau}},
 
+		// P13 nearest read (GF-215). Same read group as GET /jobs; no job-state gate.
+		{"GET /jobs/:id/nearest", http.MethodGet, "/jobs/0/nearest", func(int) string { return "" },
+			[5]int{ok200, ok200, ok200, forb, unau}},
+
 		// P11 driver rows (GF-186). Only the driver cell is allowed; the others are refused by role.
 		{"GET /driver/jobs/today", http.MethodGet, "/driver/jobs/today", func(int) string { return "" },
 			[5]int{forb, forb, forb, ok200, unau}},
@@ -207,6 +211,7 @@ func TestRoleMatrix(t *testing.T) {
 	jobRowSetup := map[string]func() string{
 		"POST /jobs/:id/assign":        freshJob("assign"),
 		"POST /jobs/:id/cancel":        freshJob("cancel"),
+		"GET /jobs/:id/nearest":        freshJob("nearest"),
 		"POST /driver/jobs/:id/accept": driverJob("accept"),
 		"POST /driver/jobs/:id/start":  driverJob("start", jobs.StateAccepted),
 		"POST /driver/jobs/:id/pickup": driverJob("pickup", jobs.StateAccepted, jobs.StateEnRoute),
