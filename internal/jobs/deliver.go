@@ -75,6 +75,15 @@ func (h *Handler) views(ctx context.Context, fleetID int64, js ...Job) ([]jobVie
 	return out, nil
 }
 
+// writeJob writes one job object with its proof URL (GF-196).
+func (h *Handler) writeJob(c echo.Context, status int, fleetID int64, j Job) error {
+	views, err := h.views(c.Request().Context(), fleetID, j)
+	if err != nil {
+		return err
+	}
+	return c.JSON(status, views[0])
+}
+
 // proofKeys reads proof_photo for the listed jobs of the fleet. A job without a
 // proof is absent from the map.
 func proofKeys(ctx context.Context, q querier, fleetID int64, ids []int64) (map[int64]string, error) {
@@ -276,9 +285,5 @@ func (h *Handler) deliver(c echo.Context) error {
 	if out == Applied {
 		publishChange(h.Events, ch)
 	}
-	views, err := h.views(ctx, p.FleetID, ch.Job)
-	if err != nil {
-		return err
-	}
-	return c.JSON(http.StatusOK, views[0])
+	return h.writeJob(c, http.StatusOK, p.FleetID, ch.Job)
 }

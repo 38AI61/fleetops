@@ -96,7 +96,7 @@ type assignBody struct {
 }
 
 type listOut struct {
-	Jobs []Job `json:"jobs"`
+	Jobs []jobView `json:"jobs"`
 }
 
 // failBody is the POST /driver/jobs/:id/fail body (GF-188).
@@ -234,7 +234,7 @@ func (h *Handler) create(c echo.Context) error {
 	if err != nil {
 		return writeErr(c, err)
 	}
-	return c.JSON(http.StatusCreated, job)
+	return h.writeJob(c, http.StatusCreated, p.FleetID, job)
 }
 
 func (h *Handler) list(c echo.Context) error {
@@ -250,7 +250,11 @@ func (h *Handler) list(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	return c.JSON(http.StatusOK, listOut{Jobs: jobs})
+	views, err := h.views(c.Request().Context(), p.FleetID, jobs...)
+	if err != nil {
+		return err
+	}
+	return c.JSON(http.StatusOK, listOut{Jobs: views})
 }
 
 // assign assigns or reassigns (GF-175). Applied and replay are both 200.
@@ -277,7 +281,7 @@ func (h *Handler) assign(c echo.Context) error {
 	if out == Applied {
 		publishChange(h.Events, ch)
 	}
-	return c.JSON(http.StatusOK, ch.Job)
+	return h.writeJob(c, http.StatusOK, p.FleetID, ch.Job)
 }
 
 // cancel moves a job to cancelled (GF-176). Applied and replay are both 200.
@@ -300,7 +304,7 @@ func (h *Handler) cancel(c echo.Context) error {
 	if out == Applied {
 		publishChange(h.Events, ch)
 	}
-	return c.JSON(http.StatusOK, ch.Job)
+	return h.writeJob(c, http.StatusOK, p.FleetID, ch.Job)
 }
 
 // driverToday serves GET /driver/jobs/today (GF-185). An unlinked driver has no
@@ -315,13 +319,17 @@ func (h *Handler) driverToday(c echo.Context) error {
 		return err
 	}
 	if !linked {
-		return c.JSON(http.StatusOK, listOut{Jobs: []Job{}})
+		return c.JSON(http.StatusOK, listOut{Jobs: []jobView{}})
 	}
 	jobs, err := h.Svc.DriverJobs(c.Request().Context(), p.FleetID, driverID, h.now())
 	if err != nil {
 		return err
 	}
-	return c.JSON(http.StatusOK, listOut{Jobs: jobs})
+	views, err := h.views(c.Request().Context(), p.FleetID, jobs...)
+	if err != nil {
+		return err
+	}
+	return c.JSON(http.StatusOK, listOut{Jobs: views})
 }
 
 // driverMove serves one driver transition (GF-186..GF-188). The caller's driver
@@ -361,7 +369,7 @@ func (h *Handler) driverMove(to State) echo.HandlerFunc {
 		if out == Applied {
 			publishChange(h.Events, ch)
 		}
-		return c.JSON(http.StatusOK, ch.Job)
+		return h.writeJob(c, http.StatusOK, p.FleetID, ch.Job)
 	}
 }
 
