@@ -8,6 +8,8 @@ import { LoginRoute, RequireSession } from './auth/guard'
 // Lazy so the login route never loads MapLibre (jsdom cannot run it, and the
 // login bundle stays small).
 const MapPage = lazy(() => import('./map/MapPage').then((m) => ({ default: m.MapPage })))
+const JobsPage = lazy(() => import('./jobs/JobsPage').then((m) => ({ default: m.JobsPage })))
+const NewJobPage = lazy(() => import('./jobs/NewJobPage').then((m) => ({ default: m.NewJobPage })))
 
 export function App() {
   useEffect(() => {
@@ -25,6 +27,26 @@ export function App() {
               <RequireSession>
                 <Suspense fallback={<p>Loading</p>}>
                   <MapPage />
+                </Suspense>
+              </RequireSession>
+            }
+          />
+          <Route
+            path="/jobs"
+            element={
+              <RequireSession>
+                <Suspense fallback={<p>Loading</p>}>
+                  <JobsPage />
+                </Suspense>
+              </RequireSession>
+            }
+          />
+          <Route
+            path="/jobs/new"
+            element={
+              <RequireSession>
+                <Suspense fallback={<p>Loading</p>}>
+                  <NewJobPage />
                 </Suspense>
               </RequireSession>
             }

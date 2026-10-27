@@ -93,3 +93,21 @@ body,
   border: 1px solid #9ca3af;
   border-radius: 4px;
 }
+
+/* P13 jobs screens: the create form sits beside the pick map. */
+.new-job {
+  display: flex;
+  gap: 16px;
+  padding: 16px;
+}
+.new-job-map {
+  flex: 1;
+  min-height: 480px;
+  position: relative;
+}
+.new-job-map .map-canvas {
+  height: 100%;
+}
+.new-job-form {
+  width: 340px;
+}

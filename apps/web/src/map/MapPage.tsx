@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
+import { Link } from 'react-router'
 import type { VehicleRow } from '../api/types'
 import { logout } from '../auth/logout'
 import { getAuthState } from '../auth/session'
@@ -87,6 +88,7 @@ export function MapPage() {
       <header className="topbar">
         <span className="title">Operations map</span>
         <ConnectionBadge />
+        <Link to="/jobs">Jobs</Link>
         <button type="button" onClick={() => void logout()}>
           Log out
         </button>
