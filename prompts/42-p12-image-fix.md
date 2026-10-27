@@ -1,0 +1,22 @@
+# P12 fix — swap the unpullable MinIO image (spec-amend + code, one commit)
+
+Goal: fix the single blocker left by the P12 implement run: the pinned MinIO image cannot be pulled, so validation gates 3, 4 and 6 fail. You are on branch `phase-12-proof-of-delivery`.
+
+Context (verified on this host, 2026-10-27):
+- `docker pull minio/minio:RELEASE.2025-04-22T22-12-26Z` fails: Docker Hub returns HTTP 404 for the entire `minio/minio` repository, not just that tag. `quay.io/minio/minio` requires auth (401), `public.ecr.aws/minio/minio` does not exist, `ghcr.io/minio/minio` is denied. The pin is unpullable here — a registry availability problem, not a code bug.
+- Verified working substitute: `bitnamilegacy/minio:2025.7.23-debian-12-r5` pulls card-free and is Bitnami's packaging of upstream MinIO `RELEASE.2025-07-23T19-17-31Z` (the same 2025-07 server line the planning run intended; the spec's `RELEASE.2025-04-22T22-12-26Z` pin is not a real upstream tag). Env names are unchanged (`MINIO_ROOT_USER`, `MINIO_ROOT_PASSWORD`); ports 9000/9001 unchanged.
+- `internal/proofs/prooftest/minio.go` already ran green against this image in a scratch copy (`/tmp/p12-verify`, all `TestProofs*` PASS) with exactly two adjustments: the image constant, and a `testcontainers.CustomizeRequest` wrapper setting `ContainerRequest{User: "root"}` (Bitnami's default user `1001` cannot write the container data paths). Reuse precisely that approach.
+
+Do, in ONE commit on the branch (`Swap the unpullable MinIO image for bitnamilegacy (GF-208)` + `Co-Authored-By: Claude Haiku 5.5 <noreply@anthropic.com>` trailer):
+1. Spec-amend `specs/features/12-proof-of-delivery.md` mechanically: replace every occurrence of the unpullable image string (task groups G1/G2, decisions GF-203/GF-205) with `bitnamilegacy/minio:2025.7.23-debian-12-r5`, and append one new decision:
+   - **GF-208 — MinIO image registry substitution.** Upstream's `minio/minio` Docker Hub repository is no longer publicly pullable (HTTP 404 at repository level, verified 2026-10-27; quay requires auth, public ECR lacks the repo, ghcr denied). Tests and compose use `bitnamilegacy/minio:2025.7.23-debian-12-r5`, Bitnami's packaging of upstream `RELEASE.2025-07-23T19-17-31Z`. `prooftest` runs the container as `User: root` via `testcontainers.CustomizeRequest` because Bitnami's default `1001` cannot write its data paths; S3/console ports and `MINIO_ROOT_USER`/`MINIO_ROOT_PASSWORD` semantics are unchanged. *Why:* the pinned image is unpullable in this environment; the substitute preserves the intended upstream version.
+2. `internal/proofs/prooftest/minio.go`: set `Image` to the substitute tag and add the `CustomizeRequest` `User: "root"` option. Nothing else in the file changes.
+3. `deploy/docker-compose.yml`: swap only the minio service image to the same tag, keeping the line-68 comment true (same tag as prooftest). No other compose change. Compose is never started.
+4. Run `go mod tidy` only if the build demands it (testcontainers-go is already required; go.mod should not change).
+5. Run validation gates 1–11 from the spec verbatim, in the real tree (never a scratch copy), quoting each command and its outcome: `make fmt-check`; `make lint`; `make test`; `go test ./internal/proofs/... -race -count=1 -run 'TestProofs' -v`; `go test ./internal/jobs/... -race -count=1 -run 'TestDriverStoreDeliver' -v`; `go test ./services/api/... -race -count=1 -run 'TestDriverDeliver|TestJobProofURLs|TestRoleMatrix' -v`; `docker compose -f deploy/docker-compose.yml config -q`; the scope-fence `git diff --name-only main...HEAD`; the migrations tail check; `wc -l CLAUDE.md`; the credential scan of the diff. Known flake: `internal/hub` — isolate re-run before treating a failure as real.
+
+Done when: gates 1–11 all pass in the real tree, the tree is clean, and the diff vs the previous head is only the image swap plus the GF-208 spec row.
+
+Out of scope: everything in the P12 spec's out-of-scope list. Touch ONLY `specs/features/12-proof-of-delivery.md`, `internal/proofs/prooftest/minio.go`, `deploy/docker-compose.yml`, and go.mod/go.sum if tidy requires. No README, no `deploy/PORTS.md`, no `specs/constitution/`, no `db/`, no `internal/hub/`, no `internal/config/`, no `internal/testinfra/`, no compose start, no merge to main, no push.
+
+Report: the commit hash, a summary of the diff, every gate command + outcome, and `git log --oneline -3` for the branch.
