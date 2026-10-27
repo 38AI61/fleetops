@@ -4,7 +4,10 @@ import { ApiError } from '../api/client'
 import { deliverJob } from '../api/driver'
 import { DEVICE_KEY_STORAGE } from '../device/key'
 import { setSession } from '../session/session'
+import { listQueue } from '../offline/queue'
 import { renderAt } from '../test/render'
+import { resetQueueDb } from '../test/queue'
+import { setOnline } from '../test/network'
 import { signInAs } from '../test/session'
 
 vi.mock('../api/driver', () => ({
@@ -50,7 +53,8 @@ function submit() {
 }
 
 describe('DeliverPage', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    await resetQueueDb()
     localStorage.clear()
     localStorage.setItem(DEVICE_KEY_STORAGE, VALID)
     signInAs('driver')
@@ -59,6 +63,7 @@ describe('DeliverPage', () => {
   })
 
   afterEach(() => {
+    setOnline(true)
     setSession(null)
     localStorage.clear()
     Reflect.deleteProperty(navigator, 'geolocation')
@@ -106,6 +111,32 @@ describe('DeliverPage', () => {
     expect(form.get('lat')).toBe('41.0082')
     expect(form.get('lng')).toBe('28.9784')
     expect(form.get('photo')).toBeInstanceOf(File)
+  })
+
+  it('an offline submit queues the photo and does not call the API', async () => {
+    setOnline(false)
+    renderAt('/jobs/5/deliver')
+    choosePhoto()
+
+    submit()
+
+    expect(await screen.findByRole('heading', { name: 'Today' })).toBeInTheDocument()
+    expect(screen.getByText(/Delivery queued/)).toBeInTheDocument()
+    expect(deliverJob).not.toHaveBeenCalled()
+    const [queued] = await listQueue('7')
+    expect(queued).toMatchObject({ jobId: 5, action: 'deliver', key: '5:deliver' })
+    expect(queued.photo?.name).toBe('proof.jpg')
+  })
+
+  it('a network failure on submit queues the delivery', async () => {
+    vi.mocked(deliverJob).mockRejectedValue(new TypeError('Failed to fetch'))
+    renderAt('/jobs/5/deliver')
+    choosePhoto()
+
+    submit()
+
+    expect(await screen.findByRole('heading', { name: 'Today' })).toBeInTheDocument()
+    expect(await listQueue('7')).toHaveLength(1)
   })
 
   it.each([

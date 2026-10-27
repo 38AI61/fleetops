@@ -3,7 +3,9 @@ import { useNavigate, useParams } from 'react-router'
 import { ApiError } from '../api/client'
 import { buildDeliverForm, checkPhotoFile } from '../jobs/deliver'
 import { useDeliverJob } from '../jobs/queries'
+import { enqueueDeliver } from '../offline/queue'
 import { readPosition } from '../position/geo'
+import { useAuthState } from '../session/session'
 
 const PHOTO_MESSAGES = {
   type: 'Photo must be a JPEG, PNG or WebP image.',
@@ -17,6 +19,7 @@ export function DeliverPage() {
   const params = useParams()
   const navigate = useNavigate()
   const deliver = useDeliverJob()
+  const userId = useAuthState().session?.claims.sub ?? ''
   const [photo, setPhoto] = useState<File | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
 
@@ -38,6 +41,17 @@ export function DeliverPage() {
     setPhoto(file)
   }
 
+  // The photo and coordinates go to IDB, and the driver goes back to Today with a notice (GF-241).
+  async function queueDelivery(file: File, lat: number, lng: number) {
+    try {
+      await enqueueDeliver(userId, { id }, file, lat, lng)
+    } catch {
+      setNotice(GENERIC_FAILED)
+      return
+    }
+    navigate('/today', { replace: true, state: { queued: true } })
+  }
+
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (!photo || !validId) return
@@ -49,14 +63,22 @@ export function DeliverPage() {
       setNotice(LOCATION_FAILED)
       return
     }
-    const form = buildDeliverForm(photo, fix.coords.latitude, fix.coords.longitude)
-    deliver.mutate(
-      { id, form },
-      {
-        onSuccess: () => navigate('/today', { replace: true }),
-        onError: (err) => setNotice(deliverMessage(err)),
-      },
-    )
+    const { latitude: lat, longitude: lng } = fix.coords
+    if (!navigator.onLine) {
+      await queueDelivery(photo, lat, lng)
+      return
+    }
+    try {
+      await deliver.mutateAsync({ id, form: buildDeliverForm(photo, lat, lng) })
+      navigate('/today', { replace: true })
+    } catch (err) {
+      // A network failure means the request never reached the server, so it is queued.
+      if (err instanceof TypeError) {
+        await queueDelivery(photo, lat, lng)
+        return
+      }
+      setNotice(deliverMessage(err))
+    }
   }
 
   if (!validId) {
