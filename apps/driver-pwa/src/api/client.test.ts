@@ -1,13 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { setSession, currentAccessToken, type Session } from '../session/session'
 import { cancelProactive } from '../session/refresh'
+import { token } from '../test/session'
 import { getJson, ApiError } from './client'
-
-// A JWT-shaped string with a base64url payload. decodeClaims reads only the payload.
-function token(claims: Record<string, unknown>): string {
-  const b64 = (s: string) => btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
-  return `${b64('{"alg":"none"}')}.${b64(JSON.stringify(claims))}.sig`
-}
 
 const OLD_TOKEN = token({ sub: '1', fleet_id: 1, role: 'driver', exp: 4102444800 })
 const NEW_TOKEN = token({ sub: '1', fleet_id: 1, role: 'driver', exp: 4102444800, rev: 2 })
