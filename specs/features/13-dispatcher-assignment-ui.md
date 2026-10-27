@@ -201,3 +201,21 @@ GF-192 (hub identity binding) remains open. P13 does not touch the hub; GF-192 n
 - Changes to `README.md`, `deploy/PORTS.md`, `deploy/docker-compose.yml`, `specs/constitution/`.
 - Compose start, merge to main, push, or any P14+ content.
 - Changes to `internal/jobs/` and `internal/mapview/` (reused, not modified).
+
+## Execution record
+
+**G0 preflight (2026-10-27, branch `phase-13-dispatcher-assignment-ui`).** All facts hold: `db/migrations` ends at `009_jobs_core`; `vehicles` has `id, fleet_id, plate, status, paired_device_id`; `vehicles_latest` has `vehicle_id, fleet_id, geom, speed_kmh, heading_deg, device_ts, server_ts`; `vehicle_pairings.driver_id` is nullable with `ended_at` and a partial unique index on open `vehicle_id`; `drivers.name` exists; `jobs.size_class`, `weight_kg`, `notes` are nullable and `createBody.SizeClass` is a pointer, so size class is optional; GF-208 is the highest decision id; GF-175 (driver required) and GF-177 (role cells) match the quotes above. Baseline `make fmt-check lint test` and `npm --prefix apps/web ci --include=dev`, `typecheck`, `test`, `build` are green before any P13 code.
+
+**Correction to the GF-212 fixture formula (G1).** The line above writes `M(φ) = a(1−e²)·[A0·φ − …]` with `A0 = 1 − e²/4 − …`. That mixes two forms and is off by the factor `(1−e²)`, about 0.67% (7.4 m at 1106 m, 148 m at 22 km), so the reference would fail the ±1 m tolerance. The correct series is `M(φ) = a·[A0·φ − A2·sin2φ + A4·sin4φ − A6·sin6φ]` with no prefactor. `TestMeridianArcReference` checks it against the published WGS84 quarter meridian (10001965.729 m). The equatorial vehicle at a longitude offset uses `a·Δλ` (exact along the equator).
+
+**Fixture derivation output (G1, pickup at lat 0 lng 0, `TestNearestOrderingFixture`).**
+
+| Vehicle | Position | Reference (m) | PostGIS (m, 0.1 rounded) |
+|---|---|---|---|
+| FX-LAT-001 | lat 0.01, lng 0 | 1105.743 | 1105.7 |
+| FX-LAT-002 | lat 0.02, lng 0 | 2211.486 | 2211.5 |
+| FX-LAT-005 | lat 0.05, lng 0 | 5528.714 | 5528.7 |
+| FX-LNG-010 | lat 0, lng 0.10 | 11131.949 | 11131.9 |
+| FX-LAT-020 | lat 0.20, lng 0 | 22114.856 | 22114.9 |
+
+Decoys (none returned): other-fleet vehicle at zero distance, `maintenance`, `retired`, unpaired active, paired with NULL driver, ended pairing, paired to an other-fleet driver, and never-reported.
