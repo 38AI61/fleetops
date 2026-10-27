@@ -13,7 +13,7 @@ describe('App route gating', () => {
     localStorage.clear()
     setSession(null)
     markBooted()
-    vi.stubGlobal('fetch', vi.fn())
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('{"jobs":[]}', { status: 200 })))
   })
 
   afterEach(() => {
