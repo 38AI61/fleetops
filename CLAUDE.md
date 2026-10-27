@@ -104,7 +104,7 @@ Values come from the environment, like the names above. Unset or empty means the
 - Build (typecheck + build): `npm --prefix apps/web run build`
 - Typecheck only: `npm --prefix apps/web run typecheck`
 - Unit and component tests: `npm --prefix apps/web test`
-- Dev proxy: `/auth`, `/map`, `/vehicles` → `127.0.0.1:10010`; `/stream` → `127.0.0.1:10011` (WebSocket)
+- Dev proxy: `/auth`, `/map`, `/vehicles`, `/jobs` → `127.0.0.1:10010`; `/stream` → `127.0.0.1:10011` (WebSocket)
 
 ## Jobs (P10)
 
@@ -128,3 +128,9 @@ Values come from the environment, like the names above. Unset or empty means the
 - Presigned URLs: every job object has `proof_photo_url`, a presigned GET valid 15 minutes, signed on read and never stored. It is null when the job has no proof.
 - Body limits: the deliver route allows 8M; every other route keeps the global 64K.
 - Boot: the API requires `MINIO_ENDPOINT`, `MINIO_KEY` and `MINIO_SECRET`, ensures the `proofs` bucket, and refuses to start if either step fails.
+
+## Nearest and assignment (P13)
+
+- `GET /jobs/:id/nearest?limit=` (JWT; admin, manager and dispatcher; driver 403). The job must be in the caller's fleet, and a missing, cross-fleet or malformed id is 404. `limit` defaults to 10 and must be an integer 1..50, else 400 `validation_failed`. No job-state gate.
+- Response: `{"job_id", "candidates": [{"vehicle_id", "plate", "driver_id", "driver_name", "distance_m", "lat", "lng", "server_ts"}]}`, ordered by `ST_Distance` then vehicle id. `distance_m` is rounded to 0.1 m. Candidates are active vehicles with a latest position and an open pairing to a driver of the fleet.
+- UI routes (login required): `/jobs` lists jobs with state, driver and day filters, and opens the assignment panel from a created or assigned row. `/jobs/new` picks pickup and dropoff on the map beside the create form.
