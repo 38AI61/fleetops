@@ -3,6 +3,7 @@ package jobs
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"slices"
 	"testing"
 	"time"
@@ -123,5 +124,207 @@ func TestDriverResolveAndList(t *testing.T) {
 	}
 	if empty == nil || len(empty) != 0 {
 		t.Fatalf("cross-fleet driver jobs = %#v, want empty non-nil slice", empty)
+	}
+}
+
+// TestDriverStoreTransition covers the driver transition path (GF-187..GF-191, D-24):
+// each driver edge, ownership, fail persistence, replay, illegal edges, target
+// validation, and event counts per job.
+func TestDriverStoreTransition(t *testing.T) {
+	db := testinfra.NewMigratedDB(t)
+	s := &Store{DB: db}
+	ctx := context.Background()
+	fleet, admin := fleetWithAdmin(t, db, "drvtx")
+	otherFleet, otherAdmin := fleetWithAdmin(t, db, "drvtx-other")
+	vehicle := fleetVehicle(t, db, fleet, "DT-1")
+	me := fleetDriver(t, db, fleet, "drvtx-me")
+	other := fleetDriver(t, db, fleet, "drvtx-other-driver")
+	meUser := linkedDriverUser(t, db, fleet, me, "drvtx-me@example.test")
+
+	// fresh creates a job and assigns it to driver, returning its id.
+	fresh := func(driver int64) int64 {
+		t.Helper()
+		job, err := s.Create(ctx, admin, fleet, newTestJob())
+		if err != nil {
+			t.Fatalf("create: %v", err)
+		}
+		if _, _, err := s.Assign(ctx, admin, fleet, job.ID, vehicle, driver); err != nil {
+			t.Fatalf("assign: %v", err)
+		}
+		return job.ID
+	}
+	// advance moves a job as the dispatcher, for fixtures that need a driver-side state.
+	advance := func(job int64, to ...State) {
+		t.Helper()
+		for _, st := range to {
+			if _, _, err := s.Transition(ctx, admin, fleet, job, st); err != nil {
+				t.Fatalf("advance %d to %s: %v", job, st, err)
+			}
+		}
+	}
+	events := func(job int64) int {
+		return rowCount(t, db, `SELECT count(*) FROM job_events WHERE job_id = $1`, job)
+	}
+	stateOf := func(job int64) State {
+		t.Helper()
+		j, err := s.Get(ctx, fleet, job)
+		if err != nil {
+			t.Fatalf("get %d: %v", job, err)
+		}
+		return j.State
+	}
+	reasonOf := func(job int64) *string {
+		t.Helper()
+		j, err := s.Get(ctx, fleet, job)
+		if err != nil {
+			t.Fatalf("get %d: %v", job, err)
+		}
+		return j.FailureReason
+	}
+	lastActor := func(job int64) int64 {
+		t.Helper()
+		var a int64
+		if err := db.QueryRow(`SELECT actor_id FROM job_events WHERE job_id = $1 ORDER BY id DESC LIMIT 1`, job).Scan(&a); err != nil {
+			t.Fatalf("last actor: %v", err)
+		}
+		return a
+	}
+	reason := func(v string) *string { return &v }
+
+	// Happy path: assigned -> accepted -> en_route -> picked_up -> failed, one event each.
+	job := fresh(me)
+	if n := events(job); n != 2 {
+		t.Fatalf("events after assign = %d, want 2 (create + assign)", n)
+	}
+	for _, to := range []State{StateAccepted, StateEnRoute, StatePickedUp} {
+		before := events(job)
+		ch, out, err := s.DriverTransition(ctx, meUser, fleet, job, me, to, nil)
+		if err != nil || out != Applied {
+			t.Fatalf("driver -> %s: outcome %v err %v, want Applied", to, out, err)
+		}
+		if ch.To != to || ch.Job.State != to {
+			t.Fatalf("driver -> %s: change = %+v", to, ch)
+		}
+		if events(job) != before+1 {
+			t.Fatalf("driver -> %s: events did not grow by one", to)
+		}
+		if a := lastActor(job); a != meUser {
+			t.Fatalf("driver -> %s: actor = %d, want user %d (GF-180)", to, a, meUser)
+		}
+	}
+	ch, out, err := s.DriverTransition(ctx, meUser, fleet, job, me, StateFailed, reason("gate locked"))
+	if err != nil || out != Applied {
+		t.Fatalf("picked_up -> failed: outcome %v err %v, want Applied", out, err)
+	}
+	if ch.Job.FailureReason == nil || *ch.Job.FailureReason != "gate locked" {
+		t.Fatalf("failure_reason = %v, want gate locked", ch.Job.FailureReason)
+	}
+	if n := events(job); n != 6 {
+		t.Fatalf("events after 4 applied moves = %d, want 6", n)
+	}
+
+	// fail from accepted and from en_route are also edges.
+	for _, from := range []State{StateAccepted, StateEnRoute} {
+		j := fresh(me)
+		advance(j, StateAccepted)
+		if from == StateEnRoute {
+			advance(j, StateEnRoute)
+		}
+		if _, out, err := s.DriverTransition(ctx, meUser, fleet, j, me, StateFailed, reason("no access")); err != nil || out != Applied {
+			t.Fatalf("%s -> failed: outcome %v err %v, want Applied", from, out, err)
+		}
+		if stateOf(j) != StateFailed {
+			t.Fatalf("%s -> failed: state = %s", from, stateOf(j))
+		}
+	}
+
+	// Replay: accepted again is Replayed with no event.
+	rep := fresh(me)
+	advance(rep, StateAccepted)
+	before := events(rep)
+	ch, out, err = s.DriverTransition(ctx, meUser, fleet, rep, me, StateAccepted, nil)
+	if err != nil || out != Replayed || ch.Job.State != StateAccepted {
+		t.Fatalf("accept replay: outcome %v err %v state %v, want Replayed accepted", out, err, ch.Job.State)
+	}
+	if events(rep) != before {
+		t.Fatalf("accept replay wrote an event")
+	}
+
+	// Replay of fail: the second reason is ignored and the first stays durable.
+	f := fresh(me)
+	advance(f, StateAccepted)
+	if _, out, err := s.DriverTransition(ctx, meUser, fleet, f, me, StateFailed, reason("first")); err != nil || out != Applied {
+		t.Fatalf("first fail: outcome %v err %v, want Applied", out, err)
+	}
+	before = events(f)
+	if _, out, err := s.DriverTransition(ctx, meUser, fleet, f, me, StateFailed, reason("second")); err != nil || out != Replayed {
+		t.Fatalf("second fail: outcome %v err %v, want Replayed", out, err)
+	}
+	if events(f) != before {
+		t.Fatalf("fail replay wrote an event")
+	}
+	if r := reasonOf(f); r == nil || *r != "first" {
+		t.Fatalf("failure_reason after replay = %v, want first", r)
+	}
+
+	// Ownership (GF-187): another driver, an unlinked caller (driver id 0), and a
+	// cross-fleet caller all get ErrNotFound and leave the job unchanged.
+	owned := fresh(me)
+	before = events(owned)
+	if _, _, err := s.DriverTransition(ctx, meUser, fleet, owned, other, StateAccepted, nil); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("other driver accept: err = %v, want ErrNotFound", err)
+	}
+	if _, _, err := s.DriverTransition(ctx, meUser, fleet, owned, 0, StateAccepted, nil); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("unlinked accept: err = %v, want ErrNotFound", err)
+	}
+	if _, _, err := s.DriverTransition(ctx, otherAdmin, otherFleet, owned, me, StateAccepted, nil); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("cross-fleet accept: err = %v, want ErrNotFound", err)
+	}
+	if stateOf(owned) != StateAssigned || events(owned) != before {
+		t.Fatalf("refused driver moves changed the job")
+	}
+
+	// The ownership guard runs before the replay check: a non-owner calling a
+	// target the job already has gets ErrNotFound, not a replayed 200.
+	advance(owned, StateAccepted)
+	before = events(owned)
+	if _, _, err := s.DriverTransition(ctx, meUser, fleet, owned, other, StateAccepted, nil); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("non-owner replay: err = %v, want ErrNotFound", err)
+	}
+	if _, _, err := s.DriverTransition(ctx, otherAdmin, otherFleet, owned, me, StateFailed, reason("x")); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("cross-fleet fail: err = %v, want ErrNotFound", err)
+	}
+	if stateOf(owned) != StateAccepted || events(owned) != before || reasonOf(owned) != nil {
+		t.Fatalf("non-owner calls changed the job")
+	}
+
+	// Illegal edges from assigned are ErrConflict with nothing changed.
+	ill := fresh(me)
+	before = events(ill)
+	for _, to := range []State{StateEnRoute, StatePickedUp, StateFailed} {
+		if _, _, err := s.DriverTransition(ctx, meUser, fleet, ill, me, to, reason("x")); !errors.Is(err, ErrConflict) {
+			t.Fatalf("assigned -> %s: err = %v, want ErrConflict", to, err)
+		}
+	}
+	if stateOf(ill) != StateAssigned || events(ill) != before || reasonOf(ill) != nil {
+		t.Fatalf("illegal driver moves changed the job")
+	}
+	// failed is terminal: accepted from failed is ErrConflict.
+	if _, _, err := s.DriverTransition(ctx, meUser, fleet, f, me, StateAccepted, nil); !errors.Is(err, ErrConflict) {
+		t.Fatalf("failed -> accepted: err = %v, want ErrConflict", err)
+	}
+
+	// Targets outside the driver set are ErrValidation, and fail needs a reason.
+	val := fresh(me)
+	for _, to := range []State{StateDelivered, StateAssigned, StateCancelled, State("bogus")} {
+		if _, _, err := s.DriverTransition(ctx, meUser, fleet, val, me, to, reason("x")); !errors.Is(err, ErrValidation) {
+			t.Fatalf("target %s: err = %v, want ErrValidation", to, err)
+		}
+	}
+	if _, _, err := s.DriverTransition(ctx, meUser, fleet, val, me, StateFailed, nil); !errors.Is(err, ErrValidation) {
+		t.Fatalf("fail without reason: err = %v, want ErrValidation", err)
+	}
+	if stateOf(val) != StateAssigned {
+		t.Fatalf("validation refusals changed the job")
 	}
 }
