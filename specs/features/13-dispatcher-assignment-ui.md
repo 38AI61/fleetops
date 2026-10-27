@@ -219,3 +219,7 @@ GF-192 (hub identity binding) remains open. P13 does not touch the hub; GF-192 n
 | FX-LAT-020 | lat 0.20, lng 0 | 22114.856 | 22114.9 |
 
 Decoys (none returned): other-fleet vehicle at zero distance, `maintenance`, `retired`, unpaired active, paired with NULL driver, ended pairing, paired to an other-fleet driver, and never-reported.
+
+**G9 validation record (2026-10-27).** All checks in the Validation section were run on this branch and passed: `make fmt-check` (0), `make lint` (0, 0 issues), `make test` (0, 24 packages ok, includes `db/roundtrip_test.go`), `go test ./internal/dispatch/...` with `TestNearestOrderingFixture` and `TestNearestFleetScope` (PASS), `go test ./services/api/...` with `TestNearestEndpoint` and `TestRoleMatrix` (PASS; nearest row `200 200 200 403 401`), `npm --prefix apps/web ci --include=dev`, `typecheck`, `test` (13 files, 68 tests) and `build` (all 0). Scope fence touches only allowed paths; `db/migrations` ends at `009_jobs_core`; CLAUDE.md is 136 lines.
+
+**Manual follow-up (roadmap §5, not a CI gate).** API latency for assign and nearest is first measurable in P13 and has not been measured yet. Measure it against a running API and record the numbers here.
