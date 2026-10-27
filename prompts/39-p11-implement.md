@@ -1,0 +1,17 @@
+# P11 implement — driver job API (auto-mode pointer)
+
+Goal: implement roadmap phase P11 exactly per the committed feature spec. You are on branch `phase-11-driver-jobs`.
+
+Context: read `specs/features/11-driver-jobs.md` — it is the complete instruction (task groups G0–G8, decisions GF-184…GF-193, validation items 1–8). Also read `specs/constitution/roadmap.md` §1 (R-1…R-9, esp. R-6) and §3 P11, `specs/constitution/tech-stack.md` §7.1–§7.2, §8.1, §9, §11 (D-21, D-23, D-24, GF-4), `specs/constitution/mission.md` §7 (the D-23 row owning `POST /driver/jobs/:id/fail`), `specs/features/10-job-core.md` (the GF-173/174/178/179/180 decisions your routes reuse — do not restate or change them), `AGENTS.md`, `CLAUDE.md` (ports, env, migration rules GF-5, test commands, the Jobs (P10) block). Those files are the source of truth; this prompt only points.
+
+Method: work the task groups in order (G0 → G8). Commit after each task group with an imperative message (`git add <paths> && git commit -m "..."`), each with a `Co-Authored-By: Claude Haiku 5.5 <noreply@anthropic.com>` trailer — small scoped commits, tests live beside code, never fold unrelated groups into one commit. The spec's test names are binding. GF-190's choice stands: `internal/jobs/store.go` `Transition`/`Assign` are not modified; new driver methods live in `internal/jobs/driver.go`.
+
+Host facts: Go at the `deploy/.local/tools.mk` paths (already wired — `make fmt-check lint test` just work). `make test` needs Docker for the PostGIS/NATS testcontainers — Docker IS available (card-free pulls; `postgis/postgis:16-3.4`, `nats:2` already cached). Compose is NEVER started (standing rule). Run nothing long-lived; all validation is via `go test` and `make` targets. There is no new migration in this phase; the scope fence in the spec forbids touching `db/`.
+
+Validation: run every automated gate (1–8) yourself, quoting the command and its outcome. Gate 3 (`make test`) covers the full suite with `-race`; budget for testcontainer startup. If a spec item proves wrong or ambiguous, stop that item and report it — do not silently deviate; fix through the spec (edit `specs/features/11-driver-jobs.md` in the same commit) only when the fix is mechanical and record it in the report.
+
+Done when: validation gates 1–8 pass with the exact commands and output quoted in your report, the scope fence holds (`git diff --name-only main...HEAD` lists only paths under `internal/jobs/`, `services/api/`, `CLAUDE.md`, `specs/features/11-driver-jobs.md`, `prompts/`), the tree is clean, and no commit touches `README.md`, `deploy/`, `specs/constitution/`, `db/`, `internal/hub/`, `internal/mapview/`, `apps/`, `go.mod`, or `go.sum`.
+
+Out of scope: anything not in the phase spec — no `deliver` endpoint, no proofs/MinIO/`delivery_geom` writers (P12), no driver PWA or offline cache (P13), no hub or fanout changes (GF-192 stays a recorded consideration — no identity binding in this phase), no mapview changes, no `PATCH/DELETE /jobs`, no pagination, no README/PORTS/compose/constitution edits, no migrations, no new env vars or make targets, no merge to main, no push.
+
+Report: files per task group, every validation command + its output, the final `git log --oneline` for the branch, and any deviations flagged explicitly.
