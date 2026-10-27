@@ -1,5 +1,6 @@
 import { Navigate, Outlet, useLocation, useNavigate } from 'react-router'
 import { loadDeviceKey } from '../device/key'
+import { PositionReporter } from '../position/PositionReporter'
 import { logout } from '../session/logout'
 import { useAuthState } from '../session/session'
 
@@ -16,9 +17,21 @@ export function RequireSession() {
   return <Outlet />
 }
 
-// Device gate (GF-228): a session with no stored device key goes to key setup.
+// Device gate (GF-228). A session with no stored device key goes to key setup. With
+// a key, the position reporter mounts here and runs only while on shift (GF-232).
 export function RequireDeviceKey() {
-  return loadDeviceKey() ? <Outlet /> : <Navigate to="/setup-key" replace />
+  const navigate = useNavigate()
+  const deviceKey = loadDeviceKey()
+  if (!deviceKey) return <Navigate to="/setup-key" replace />
+  return (
+    <>
+      <PositionReporter
+        deviceKey={deviceKey}
+        onKeyRejected={() => navigate('/setup-key', { replace: true, state: { rejected: true } })}
+      />
+      <Outlet />
+    </>
+  )
 }
 
 function BlockedPage() {

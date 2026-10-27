@@ -1,11 +1,15 @@
-import { fireEvent, screen, waitFor, within } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiError } from '../api/client'
 import { listTodayJobs, transitionJob } from '../api/driver'
 import type { DriverJob, JobState } from '../api/types'
 import { DEVICE_KEY_STORAGE } from '../device/key'
 import { setSession } from '../session/session'
+import { ON_SHIFT_STORAGE } from '../position/shift'
 import { renderAt } from '../test/render'
+import { TodayPage } from './TodayPage'
 import { signInAs } from '../test/session'
 
 vi.mock('../api/driver', () => ({ listTodayJobs: vi.fn(), transitionJob: vi.fn() }))
@@ -111,5 +115,30 @@ describe('TodayPage', () => {
 
     expect(await screen.findByText('Job changed; refreshed')).toBeInTheDocument()
     await waitFor(() => expect(listTodayJobs).toHaveBeenCalledTimes(2))
+  })
+
+  it('stores the on-shift flag when the toggle is switched on', async () => {
+    vi.mocked(listTodayJobs).mockResolvedValue([])
+    renderAt('/today')
+
+    fireEvent.click(await screen.findByRole('checkbox', { name: 'On shift' }))
+
+    expect(localStorage.getItem(ON_SHIFT_STORAGE)).toBe('1')
+  })
+
+  it('disables the toggle with a message when no device key is stored', async () => {
+    // The route guard sends a keyless driver to setup, so render the page alone.
+    localStorage.removeItem(DEVICE_KEY_STORAGE)
+    vi.mocked(listTodayJobs).mockResolvedValue([])
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter>
+          <TodayPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    )
+
+    expect(await screen.findByRole('checkbox', { name: 'On shift' })).toBeDisabled()
+    expect(screen.getByText('Set up the device key first')).toBeInTheDocument()
   })
 })

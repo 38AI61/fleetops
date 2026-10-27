@@ -4,7 +4,9 @@ import type { TransitionAction } from '../api/driver'
 import { ApiError } from '../api/client'
 import type { DriverJob } from '../api/types'
 import { ACTION_LABELS, actionsFor } from '../jobs/actions'
+import { loadDeviceKey } from '../device/key'
 import { useJobTransition, useTodayJobs } from '../jobs/queries'
+import { setOnShift, useOnShift } from '../position/shift'
 
 const STATE_LABELS: Record<string, string> = {
   assigned: 'Assigned',
@@ -19,6 +21,8 @@ const FAILED_MESSAGE = 'Could not update the job. Try again.'
 export function TodayPage() {
   const jobs = useTodayJobs()
   const transition = useJobTransition()
+  const onShift = useOnShift()
+  const hasKey = loadDeviceKey() !== null
   const [notice, setNotice] = useState<string | null>(null)
 
   function act(job: DriverJob, action: TransitionAction) {
@@ -37,8 +41,18 @@ export function TodayPage() {
     <main>
       <header>
         <h1>Today</h1>
+        <label>
+          <input
+            type="checkbox"
+            checked={onShift}
+            disabled={!hasKey}
+            onChange={(event) => setOnShift(event.target.checked)}
+          />{' '}
+          On shift
+        </label>
         <Link to="/setup-key">Device key</Link>
       </header>
+      {!hasKey && <p role="status">Set up the device key first</p>}
       {notice && <p role="alert">{notice}</p>}
       {jobs.isPending && <p role="status">Loading jobs…</p>}
       {jobs.isError && <p role="alert">Could not load jobs.</p>}
