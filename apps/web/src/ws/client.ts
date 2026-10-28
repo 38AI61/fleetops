@@ -22,7 +22,13 @@ interface Conn {
 }
 
 // Wire URL is derived from location, so the browser never hard-codes 10011 (GF-153).
+// VITE_WS_BASE (cloud build, GF-352) sends the socket straight to the api host, for
+// when the Pages /stream proxy cannot carry the upgrade. Unset keeps the same-origin URL.
 export function wsUrl(fleetId: number, loc: Location = window.location): string {
+  const base = import.meta.env.VITE_WS_BASE
+  if (base) {
+    return `${base.replace(/\/+$/, '')}/stream?fleet=${fleetId}`
+  }
   const scheme = loc.protocol === 'https:' ? 'wss:' : 'ws:'
   return `${scheme}//${loc.host}/stream?fleet=${fleetId}`
 }

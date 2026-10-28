@@ -1,7 +1,9 @@
 // Command seed bootstraps the first fleet and admin (D-05). It is run by
 // `make seed`. The password comes from a no-echo TTY prompt or one line on
-// stdin, never from a flag or the environment (GF-23). With --demo-devices it
-// also writes the demo devices and demo driver logins on first seed (GF-135, GF-138, GF-339).
+// stdin, never from a flag (GF-23). With --password-from-env (cloud seed, GF-351)
+// it comes from SEED_PASSWORD instead, and only when that flag is set. With
+// --demo-devices it also writes the demo devices and demo driver logins on first
+// seed (GF-135, GF-138, GF-339).
 //
 // Exit codes: 0 seeded or already seeded, 1 runtime error, 2 usage error.
 package main
@@ -35,6 +37,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	fleetName := fs.String("fleet-name", "FleetOps", "name of the first fleet")
 	timezone := fs.String("timezone", "UTC", "IANA timezone of the first fleet")
 	demoDevices := fs.Bool("demo-devices", false, "on first seed, also create demo vehicles, tracker devices and demo drivers (needs DEVICE_KEY_SALT)")
+	passwordFromEnv := fs.Bool("password-from-env", false, "read the admin password from SEED_PASSWORD (cloud seed, GF-351)")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -78,7 +81,11 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return 1
 	}
 
-	res, err := seed.Run(ctx, db, opts, passwordSource(stdin, stderr))
+	source := passwordSource(stdin, stderr)
+	if *passwordFromEnv {
+		source = envPasswordSource(os.Getenv)
+	}
+	res, err := seed.Run(ctx, db, opts, source)
 	if errors.Is(err, seed.ErrUsage) {
 		_, _ = fmt.Fprintf(stderr, "seed: %v\n", err)
 		return 2
@@ -111,6 +118,19 @@ func passwordSource(stdin io.Reader, stderr io.Writer) seed.PasswordSource {
 			return promptTwice(f, stderr)
 		}
 		return readLine(stdin)
+	}
+}
+
+// envPasswordSource reads SEED_PASSWORD for --password-from-env (GF-351). seed.Run
+// calls it only when the database is not yet seeded (GF-340), so a rerun needs
+// no variable. The value is never printed. The error names the variable only.
+func envPasswordSource(getenv func(string) string) seed.PasswordSource {
+	return func() (string, error) {
+		v := getenv("SEED_PASSWORD")
+		if v == "" {
+			return "", fmt.Errorf("%w: SEED_PASSWORD is required with --password-from-env", seed.ErrUsage)
+		}
+		return v, nil
 	}
 }
 

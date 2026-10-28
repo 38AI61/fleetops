@@ -199,7 +199,7 @@ func TestFlushAcksWhenRedisDown(t *testing.T) {
 	fan := fanout.NewRedisFanout(rdb)
 	l.cons.pub = &Publisher{
 		Fanout:  fan,
-		Tracker: presence.NewTracker(rdb, fan, 120*time.Second),
+		Tracker: presence.NewTracker(presence.NewRedisStore(rdb), fan, 120*time.Second),
 		Metrics: l.m,
 	}
 

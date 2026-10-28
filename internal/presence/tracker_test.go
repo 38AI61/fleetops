@@ -12,7 +12,7 @@ func TestPresenceSetGetTransitions(t *testing.T) {
 	rdb := newRedis(t)
 	const fleet, device = 92001, 93001
 	ch := subscribe(t, rdb, fleet)
-	tr := NewTracker(rdb, fanout.NewRedisFanout(rdb), 120*time.Second)
+	tr := NewTracker(NewRedisStore(rdb), fanout.NewRedisFanout(rdb), 120*time.Second)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	ts := time.Date(2026, 10, 25, 12, 0, 0, 0, time.UTC)

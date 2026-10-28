@@ -31,4 +31,10 @@ Infrastructure services bind to `127.0.0.1` only.
 | prometheus | host network (`--web.listen-address=127.0.0.1:10014`) | 10014 | compose, `127.0.0.1` |
 | grafana | host network (`GF_SERVER_HTTP_PORT=10015`) | 10015 | compose, `127.0.0.1` |
 
-Unassigned in range: 10000, 10001, 10009, 10016–10019.
+Unassigned in range: 10000, 10001, 10009, 10016–10018.
+
+## Cloud smoke (Phase 24 — `make cloud-smoke`)
+
+| Service | Container port | Host port | Runtime |
+|---|---|---|---|
+| cloud container (front proxy, `PORT`) | 8000 | 10019 | `docker run -p 127.0.0.1:10019:8000`, smoke only |

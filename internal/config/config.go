@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -40,6 +41,13 @@ const (
 	maxPresenceTTL     = 600 * time.Second
 )
 
+// Fanout modes (GF-347). redis is the default and the local compose profile;
+// nats is the cloud profile, where the services share one embedded NATS.
+const (
+	FanoutRedis = "redis"
+	FanoutNATS  = "nats"
+)
+
 // DefaultOSRMURL is the compose port of the osrm service (GF-303). OSRM_URL is optional.
 const DefaultOSRMURL = "http://127.0.0.1:10005"
 
@@ -50,6 +58,7 @@ type Config struct {
 	DeviceKeySalt string
 	NATSURL       string
 	RedisURL      string
+	FanoutMode    string
 
 	FlushInterval time.Duration
 	FlushMax      int
@@ -57,6 +66,8 @@ type Config struct {
 
 	WSRoomCap   int
 	PresenceTTL time.Duration
+	// WSOriginPatterns replaces the hub's default vite origins when set (GF-353).
+	WSOriginPatterns []string
 
 	OSRMURL string
 }
@@ -99,14 +110,25 @@ func load(lookup func(string) (string, bool)) (Config, error) {
 	}
 	cfg.NATSURL = natsURL
 
-	redisURL, ok := lookup("REDIS_URL")
-	if !ok || redisURL == "" {
-		return Config{}, errors.New("REDIS_URL is required")
-	}
-	if err := checkRedisURL(redisURL); err != nil {
+	mode, err := loadFanoutMode(lookup)
+	if err != nil {
 		return Config{}, err
 	}
-	cfg.RedisURL = redisURL
+	cfg.FanoutMode = mode
+
+	// REDIS_URL is required only in redis mode (GF-347). When it is set in
+	// nats mode it is still format-checked, so a typo fails fast.
+	redisURL, ok := lookup("REDIS_URL")
+	if !ok || redisURL == "" {
+		if mode == FanoutRedis {
+			return Config{}, errors.New("REDIS_URL is required")
+		}
+	} else {
+		if err := checkRedisURL(redisURL); err != nil {
+			return Config{}, err
+		}
+		cfg.RedisURL = redisURL
+	}
 
 	if err := loadFlush(lookup, &cfg); err != nil {
 		return Config{}, err
@@ -155,6 +177,19 @@ func loadFlush(lookup func(string) (string, bool), cfg *Config) error {
 	return nil
 }
 
+// loadFanoutMode reads FANOUT_MODE (GF-347). It is not a FLEETOPS_* tunable, so
+// it is validated here, once. The error names the variable and never the value.
+func loadFanoutMode(lookup func(string) (string, bool)) (string, error) {
+	v, _ := lookup("FANOUT_MODE")
+	switch v {
+	case "", FanoutRedis:
+		return FanoutRedis, nil
+	case FanoutNATS:
+		return FanoutNATS, nil
+	}
+	return "", errors.New("FANOUT_MODE must be redis or nats")
+}
+
 // checkRedisURL requires scheme redis or rediss and a host (GF-119). Its errors
 // name the variable only: url.Parse errors echo the input, so they are dropped.
 func checkRedisURL(raw string) error {
@@ -187,6 +222,26 @@ func loadWS(lookup func(string) (string, bool), cfg *Config) error {
 		cfg.PresenceTTL = d
 	}
 
+	return loadWSOrigins(lookup, cfg)
+}
+
+// loadWSOrigins reads WS_ORIGIN_PATTERNS (GF-353): a comma-separated list of
+// coder/websocket origin patterns. Unset or empty keeps the hub defaults. Each
+// entry is trimmed and must be non-empty. The error names the variable only.
+func loadWSOrigins(lookup func(string) (string, bool), cfg *Config) error {
+	v, ok := lookup("WS_ORIGIN_PATTERNS")
+	if !ok || v == "" {
+		return nil
+	}
+	var patterns []string
+	for _, raw := range strings.Split(v, ",") {
+		p := strings.TrimSpace(raw)
+		if p == "" {
+			return errors.New("WS_ORIGIN_PATTERNS entries must be non-empty")
+		}
+		patterns = append(patterns, p)
+	}
+	cfg.WSOriginPatterns = patterns
 	return nil
 }
 

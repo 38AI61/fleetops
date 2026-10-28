@@ -1,0 +1,6 @@
+# Keeps device keys, demo passwords and local secrets out of the build context.
+.git/
+deploy/.local/
+deploy/.env
+apps/*/node_modules
+e2e/

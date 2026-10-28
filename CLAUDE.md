@@ -23,10 +23,6 @@ Full allocation and reserved ports: `deploy/PORTS.md`. All host ports are in 100
 | prometheus (compose, host network) | — | 10014 |
 | grafana (compose, host network) | — | 10015 |
 
-## Local infrastructure
-
-Compose file `deploy/docker-compose.yml`. Up: `docker compose -f deploy/docker-compose.yml up -d`; down: `docker compose -f deploy/docker-compose.yml down`. The `nats` service runs with `-js` (JetStream, GF-62).
-
 ## Make targets
 
 Run from the repo root. `make help` lists every target.
@@ -36,23 +32,18 @@ Run from the repo root. `make help` lists every target.
 - `make fmt-check` — fail if any Go file is not gofmt-clean
 - `make lint` — `fmt-check`, then golangci-lint
 - `make test` — `go test ./... -race -count=1` (PostGIS tests need Docker)
-- `make migrate` — apply migrations to `$DATABASE_URL` (`MIGRATE_ARGS` defaults to `up`)
-  - Roll back one step: `make migrate MIGRATE_ARGS="down 1"`
-  - Recover from a dirty version: fix the schema by hand, then `make migrate MIGRATE_ARGS="force <version>"`
-- `make seed` — bootstrap the first fleet and admin (D-05). Run `SEED_ARGS="--admin-email <email>" make seed`; add ` --demo-devices` on the first seed only to also create 50 demo vehicles with tracker devices and write `deploy/.local/devices.json` (the flag needs `DEVICE_KEY_SALT`, at least 32 bytes). The password comes from a TTY prompt or one line on stdin, never a flag. Exit 0 when already seeded (no prompt); exit 2 on usage errors.
-- `make seed-demo` — `make seed --demo-devices`: first seed only, exit 0 on a seeded DB. Also writes `deploy/.local/demo-users.json` (0600, 50 driver logins).
+- `make migrate` — apply migrations to `$DATABASE_URL` (read from the environment, not `deploy/.env`; `MIGRATE_ARGS` defaults to `up`). Roll back one step: `MIGRATE_ARGS="down 1"`. Dirty version: fix the schema by hand, then `MIGRATE_ARGS="force <version>"`.
+- `make seed` — bootstrap the first fleet and admin (D-05). Run `SEED_ARGS="--admin-email <email>" make seed`; add ` --demo-devices` on the first seed only to also create 50 demo vehicles with tracker devices and write `deploy/.local/devices.json` (the flag needs `DEVICE_KEY_SALT`, at least 32 bytes). The password comes from a TTY prompt or one line on stdin, never a flag. Exit 0 when already seeded (no prompt); exit 2 on usage errors. `make seed-demo` is `make seed --demo-devices` (first seed only; also writes `deploy/.local/demo-users.json`, 0600, 50 driver logins).
 
 ## Load and demo (P23)
 
 - `make loadtest` runs the five k6 scenarios in order (`loadtest-ws|assign|report|ingest-steady|ingest-burst`). It needs `K6` on PATH (overridable in `deploy/.local/tools.mk`) and `TOKEN` (admin JWT). Summaries go to `deploy/.local/loadtest/`. `make loadtest-static` checks the scripts without k6.
-- `make hub-scale` runs 10k synthetic WS connections under `-race` (`SCALE_CONNS` overrides).
-- Demo walkthrough and nightly line: `docs/demo.md`.
+- `make hub-scale` runs 10k synthetic WS connections under `-race` (`SCALE_CONNS` overrides). Demo walkthrough and nightly line: `docs/demo.md`.
 
 ## Tooling
 
-- Pins: Go 1.27.3 (`go.mod` toolchain line); golangci-lint v2.15.0 and golang-migrate CLI v4.18.3 (built with `-tags postgres`) in the Makefile.
-- Host override: `deploy/.local/tools.mk` (gitignored) may set `GO`, `GOFMT`, `GOLANGCI_LINT`, `MIGRATE` to host paths. The Makefile includes it.
-- `make migrate` requires `DATABASE_URL` in the environment; it is not read from `deploy/.env`.
+- Pins: Go 1.27.3 (`go.mod`), golangci-lint v2.15.0 and golang-migrate v4.18.3 (`-tags postgres`) in the Makefile. Host overrides (`GO`, `GOFMT`, `GOLANGCI_LINT`, `MIGRATE`) go in `deploy/.local/tools.mk` (gitignored).
+- Compose `deploy/docker-compose.yml`: `docker compose -f deploy/docker-compose.yml up -d` / `down`. The `nats` service runs with `-js` (GF-62).
 - Local API: `DATABASE_URL=… JWT_SECRET=… DEVICE_KEY_SALT=… NATS_URL=nats://127.0.0.1:10004 REDIS_URL=redis://127.0.0.1:10003 MINIO_ENDPOINT=127.0.0.1:10006 MINIO_KEY=… MINIO_SECRET=… go run ./services/api` listens on `127.0.0.1:10010` (`-addr` overrides). It does not run migrations. MinIO must be reachable at boot (P12).
 - Local ingest consumer: same env as the API, `DATABASE_URL=… JWT_SECRET=… DEVICE_KEY_SALT=… NATS_URL=nats://127.0.0.1:10004 REDIS_URL=redis://127.0.0.1:10003 go run ./services/ingest`. Its only listener is `/metrics` on `-metrics-addr` (`127.0.0.1:10008`, P22); it drains `GPS_RAW` into `positions`, publishes to Redis, and runs partition maintenance.
 - Local WS hub: same env as the API, `DATABASE_URL=… JWT_SECRET=… DEVICE_KEY_SALT=… NATS_URL=nats://127.0.0.1:10004 REDIS_URL=redis://127.0.0.1:10003 go run ./services/ws-hub` listens on `127.0.0.1:10011` (`-addr` overrides). It does not connect to Postgres. Clients open `WS /stream?fleet=<id>` and send `{"type":"auth","token":…}` as the first frame.
@@ -67,7 +58,7 @@ Run from the repo root. `make help` lists every target.
 
 ## Environment variables
 
-Names from README §12. Values come from the environment or `deploy/.env` (gitignored). Never commit values: `DATABASE_URL`, `NATS_URL`, `REDIS_URL`, `OSRM_URL`, `MINIO_ENDPOINT`, `MINIO_KEY`, `MINIO_SECRET`, `JWT_SECRET`, `DEVICE_KEY_SALT`, `POSTGRES_PASSWORD` (read by the postgres service in compose; local-dev default applies if unset).
+Names from README §12. Values come from the environment or `deploy/.env` (gitignored). Never commit values: `DATABASE_URL`, `NATS_URL`, `REDIS_URL`, `OSRM_URL`, `MINIO_ENDPOINT`, `MINIO_KEY`, `MINIO_SECRET`, `JWT_SECRET`, `DEVICE_KEY_SALT`, `SEED_PASSWORD`, `SMOKE_PASSWORD`, `POSTGRES_PASSWORD` (read by the postgres service in compose; local-dev default applies if unset).
 
 ## Optional tunables
 
@@ -197,3 +188,10 @@ Values come from the environment, like the names above. Unset or empty means the
 - `/metrics` (Prometheus text, no JWT, loopback only): api `127.0.0.1:10010`, ws-hub `127.0.0.1:10011`, ingest `127.0.0.1:10008` (`-metrics-addr`). No series carries `fleet_id` (GF-329, GF-330); `fleetops_ws_connections` is the WS gauge (GF-331).
 - Compose `prometheus` (`127.0.0.1:10014`) and `grafana` (`127.0.0.1:10015`), host network (GF-332). Scrape config `deploy/prometheus/prometheus.yml`; dashboard `deploy/grafana/dashboards/fleetops-observability.json`, provisioned from `deploy/grafana/provisioning/`.
 - Traces: one `jobs.assign` span (GF-335). OTLP HTTP when `OTEL_EXPORTER_OTLP_ENDPOINT` is set; unset means no-op (D-36).
+
+## Cloud profile (P24)
+
+- `make cloud-image` builds `fleetops:cloud` (`deploy/cloud/Dockerfile.render`). `fleetops-cloud` runs NATS, MinIO, api, ingest and ws-hub behind one `$PORT` (default 8000) with `FANOUT_MODE=nats`. Deploy, rollback and limits: `docs/cloud.md`.
+- `make cloud-seed` (first seed; `SEED_PASSWORD` env via `--password-from-env`), `make cloud-smoke` (`SMOKE_BASE`, default `http://127.0.0.1:10019`; `SMOKE_ADMIN_EMAIL`, `SMOKE_PASSWORD`), `make pages-test`.
+- `FANOUT_MODE` is `redis` (default) or `nats`; `REDIS_URL` is required only in `redis` mode. `WS_ORIGIN_PATTERNS` (optional, comma-separated) sets the WS origin allowlist. `GET /healthz` is unauthenticated liveness.
+- Pages Functions read `UPSTREAM_ORIGIN` (runtime); the web build may set `VITE_WS_BASE` (WS fallback). CI `image` and `deploy` jobs run only on `main`; `RENDER_DEPLOY_HOOK_URL` is a GitHub secret (name only).

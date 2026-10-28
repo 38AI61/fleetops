@@ -37,7 +37,7 @@ func newBus(t *testing.T, r *rig) *bus {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	subs, err := r.hub.Subscribe(ctx, rdb, nc)
+	subs, err := r.hub.Subscribe(ctx, NewRedisTransport(rdb), nc)
 	if err != nil {
 		t.Fatalf("subscribe: %v", err)
 	}

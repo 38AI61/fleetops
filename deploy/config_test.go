@@ -165,7 +165,7 @@ func TestGrafanaProvisioningParses(t *testing.T) {
 // removes them from the unassigned line (k).
 func TestPortsDocAssignsObservabilityPorts(t *testing.T) {
 	text := readFile(t, "PORTS.md")
-	for _, s := range []string{"| ingest metrics", "| 10008 |", "| prometheus", "| 10014 |", "| grafana", "| 10015 |", "Unassigned in range: 10000, 10001, 10009, 10016–10019."} {
+	for _, s := range []string{"| ingest metrics", "| 10008 |", "| prometheus", "| 10014 |", "| grafana", "| 10015 |", "Unassigned in range: 10000, 10001, 10009, 10016–10018."} {
 		if !strings.Contains(text, s) {
 			t.Errorf("PORTS.md missing %q", s)
 		}
