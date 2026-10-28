@@ -252,7 +252,7 @@ Run on `phase-22-observability` on this host (Go 1.27.3, golangci-lint v2.15.0, 
 
 - `make fmt-check`: exit 0.
 - `make lint`: `0 issues.`
-- `make test` (`go test ./... -race -count=1`): exit 0. 28 packages ok, 2 with no test files (`services/ingest`, `tools/...` before G1). No failure. The `internal/hub` flake policy was not needed.
+- `make test` (`go test ./... -race -count=1`): exit 0. 28 packages ok, 2 with no test files (`services/ingest` and `internal/proofs/prooftest`). No failure. The `internal/hub` flake policy was not needed.
 - `npm --prefix apps/web run typecheck`: exit 0. `npm --prefix apps/web test`: 17 files, 92 tests passed. `node_modules` present.
 - `npm --prefix apps/driver-pwa run typecheck`: exit 0. `npm --prefix apps/driver-pwa test`: 19 files, 129 tests passed. `node_modules` present.
 - `docker compose -f deploy/docker-compose.yml config -q`: exit 0.
