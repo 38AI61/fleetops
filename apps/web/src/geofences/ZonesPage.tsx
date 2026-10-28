@@ -91,6 +91,7 @@ export function ZonesPage() {
         <span className="title">Zones</span>
         <Link to="/map">Map</Link>
         <Link to="/jobs">Jobs</Link>
+        <Link to="/reports">Reports</Link>
         <AlertBell />
       </header>
 

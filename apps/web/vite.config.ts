@@ -16,6 +16,8 @@ export default defineConfig({
       '/vehicles': { target: 'http://127.0.0.1:10010', changeOrigin: false },
       '/alerts': { target: 'http://127.0.0.1:10010', changeOrigin: false },
       '/alert-rules': { target: 'http://127.0.0.1:10010', changeOrigin: false },
+      // Only the API path: /reports is the SPA route (P21).
+      '/reports/daily': { target: 'http://127.0.0.1:10010', changeOrigin: false },
       // XHR only (GF-273): a full page load that asks for HTML is served the SPA, not the API.
       '/geofences': {
         target: 'http://127.0.0.1:10010',
