@@ -167,3 +167,12 @@ Values come from the environment, like the names above. Unset or empty means the
 - Run locally with `make e2e` (needs `npm --prefix e2e ci --include=dev`, `npx playwright install --with-deps chromium` in `e2e/`, and the `apps/web` and `apps/driver-pwa` installs).
 - CI runs the `e2e` job, which calls the same `make e2e` target.
 - The report lands in `e2e/playwright-report/` (traces and videos in `e2e/test-results/`).
+
+## Geofences (P17)
+
+- Endpoints (JWT, fleet-scoped, GeoJSON Feature): `GET /geofences` (FeatureCollection), `POST /geofences` (201, Feature with `id` and `bbox`), `DELETE /geofences/:id` (204, hard delete).
+- Roles (README §8): GET admin, manager, dispatcher; POST and DELETE admin and dispatcher. Driver 403, anonymous 401.
+- Validation (400 `validation_failed`): polygon is one closed exterior ring of 4 to 1000 positions, valid in PostGIS, stored counter-clockwise. Circle is centre plus `radius_m` (1 to 100000). Optional `dwell_min` (1 to 1440) and `schedule` (`days`, `from`, `to`, `tz`).
+- Conflicts: a case-insensitive duplicate name in the fleet is 409 `conflict`. Deleting a fence with `geofence_events` rows is 409 too.
+- `bbox` is computed on every write and never taken from the client. P17 writes no `geofence_events` rows and runs no evaluator.
+- Web: route `/zones` (`apps/web/src/geofences/ZonesPage.tsx`). Dev proxy `/geofences` → `127.0.0.1:10010` (XHR only).

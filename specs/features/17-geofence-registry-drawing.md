@@ -1,6 +1,6 @@
 # Feature 17 — Geofence registry & drawing (P17)
 
-Status: planned on `phase-17-geofence-registry-drawing`, not implemented, 2026-10-27.
+Status: implemented on `phase-17-geofence-registry-drawing` (G0–G4). Validation results and deviations are at the end of this file. `make test` is not green: `db/roundtrip_test.go` still expects migration version 9 (see deviation D1).
 Source plan: `/root/.claude/plans/p17-plan-wiggly-glacier.md` (approved).
 
 Target file: `specs/features/17-geofence-registry-drawing.md` (to be persisted verbatim on branch `phase-17-geofence-registry-drawing`). Decisions GF-260…GF-277. Highest existing decision is GF-259.
@@ -238,3 +238,32 @@ Runnable on this host. Each check has a pass condition.
 - Behaviour changes beyond geofences.
 - GF-192 hub identity binding (P23).
 - Merge to main, push, or any P18+ content.
+
+## Validation results
+
+Run on this host from the repo root. Exit codes are from the final run after G4.
+
+| Check | Command | Result |
+|---|---|---|
+| (a) | `make fmt-check` | exit 0 |
+| (a) | `make lint` | exit 0, 0 issues |
+| (a) | `make test` | **exit 2**. Every package passes, including `ok fleetops/internal/geofence` and `ok fleetops/services/api` (role matrix rows for GET, POST and DELETE `/geofences`). The one failure is `TestMigrationRoundTrip` in `db/roundtrip_test.go:41` and `:59`: `version: want 9, got 10`. See D1. |
+| (b) | `npm --prefix apps/web run typecheck`, `test`, `build` | exit 0, 0, 0. Vitest: 83 tests pass (68 existing, 15 new). |
+| (c) | `apps/driver-pwa` typecheck, test, build | exit 0, 0, 0 (129 tests). The app is not changed. |
+| (d) | `git diff --name-only main...HEAD` plus uncommitted files | 26 files, all inside the fence. No match outside it. |
+| (e) | `grep -n geofences_bbox_gix internal/geofence/store_test.go`; `go test ./internal/geofence -run TestGeofenceBboxIndexUsed -count=1` | Matches at lines 87, 125 and 126. Test exit 0. |
+| (f) | `git diff main...HEAD \| grep -iE 'secret\|password\|private key\|api[_-]?key'` | Hits are test fixtures only: `testSecret` (32 bytes) in `http_test.go`, and the `'x'` password hash in fixture SQL. Also spec prose. Checked by hand. |
+| (g) | `grep -rnE 'ST_Covers\|ST_DWithin\|INSERT INTO geofence_events' internal/geofence apps/web/src/geofences \| grep -v _test.go` | No matches. |
+| (h) | `wc -l CLAUDE.md` | 178 (under 200). |
+| (i) | `git diff --name-only main...HEAD -- e2e/` | Empty. |
+| (j) | `ls db/migrations \| tail -2`; `grep -ciE 'BEGIN\|COMMIT\|CONCURRENTLY' db/migrations/010_*` | The pair is present. The grep returns **1**, not 0. The single match is the `BEGIN` of the PL/pgSQL body of `geofence_events_append_only()` (line 36, inside `$$`). Migration 003 has the same construct, and 009 has three. The repo's own transaction-safety test skips dollar-quoted bodies and passes (`go test ./db -run TestMigrationFiles`). See D2. |
+| (k) | Manual browser draw check against the dev stack | **NOT RUN.** No browser or interactive dev session is available in this run. Draw logic is covered by `draw.test.ts`. MapLibre rendering cannot run under jsdom (GF-167). |
+
+## Deviations
+
+- **D1: `db/roundtrip_test.go` is outside the fence and still expects version 9.** The spec requires the existing round-trip test to pass with 010, but the test hard-codes `assertVersion(t, m, 9)` at lines 41 and 59. The fence does not list that file, so it was left unchanged. The migration itself is correct: the up, down and up steps and the new schema checks work. The fix is to change those two constants to `10`, and it needs a fence amendment or approval. Until then `make test` exits 2.
+- **D2: check (j) grep returns 1.** The match is the PL/pgSQL `BEGIN`, not transaction control. The spec's intent (no transaction control in migrations, GF-5) holds, and the repo's own check agrees.
+- **D3: circle bbox formula changed (GF-262).** The spec's `dLat = r/111320 × 1.001` does not contain the circle. On a sphere, 111320 m per degree is larger than the true 111195 m, so 100 km is about 11 m short. On WGS84 the equatorial meridian degree is 110574 m, so the miss is about 560 m. `internal/geofence/bbox.go` uses 110574 m per degree with a 1.01 margin. It also uses the cosine at the poleward edge and widens longitude to ±180 when the circle reaches near a pole or crosses the antimeridian. `TestCircleBboxCovers` checks containment at 45° steps, for three Earth radii, at 0°, 52.5°, 70° and the antimeridian.
+- **D4: no nav link to `/zones` yet.** The spec asks for a nav link in `App.tsx`, but `App.tsx` renders no header, and the existing links live in `JobsPage.tsx` and `MapPage.tsx`, which are outside the fence. The route `/zones` exists and is guarded. The page links back to `/map` and `/jobs`. A link from those pages needs a fence amendment.
+- **D5: the G0 preflight `internal/hub` failure.** One full run failed `TestHubRelaysNATSJobAndAlert`. An isolated re-run passed. Later full runs passed. This is the known flake; no hub code was touched.
+- Role matrix (GF-268), the `geofence_events` trigger timing (SPEC-AMEND row in mission §7), and the `geofences` base table (GF-260) are implemented as specified.
