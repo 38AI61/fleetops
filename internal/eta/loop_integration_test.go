@@ -111,8 +111,9 @@ func (f *loopFx) vehicle(at *Point) int64 {
 func (f *loopFx) driver() int64 {
 	f.t.Helper()
 	var id int64
-	if err := f.db.QueryRow(`INSERT INTO drivers (fleet_id, name, license_no_hash) VALUES ($1, 'd', '\x00') RETURNING id`,
-		f.fleet).Scan(&id); err != nil {
+	// The license hash is unique per fleet, so each driver gets its own value.
+	if err := f.db.QueryRow(`INSERT INTO drivers (fleet_id, name, license_no_hash) VALUES ($1, 'd', $2) RETURNING id`,
+		f.fleet, []byte(fmt.Sprintf("lic-%d", time.Now().UnixNano()))).Scan(&id); err != nil {
 		f.t.Fatalf("insert driver: %v", err)
 	}
 	return id
