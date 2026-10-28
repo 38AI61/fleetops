@@ -34,6 +34,8 @@ type Evaluator struct {
 	DB      *sql.DB
 	Clock   func() time.Time
 	Metrics *Metrics
+	// Publisher sends alert.raised after each commit. Nil skips the publish (GF-299).
+	Publisher Publisher
 }
 
 // Run runs one pass per interval until ctx is done. A pass error is logged and
@@ -135,6 +137,9 @@ func (e *Evaluator) Pass(ctx context.Context) ([]Raised, error) {
 		for _, a := range raised {
 			e.Metrics.Raised.WithLabelValues(a.Kind, a.Severity).Inc()
 		}
+	}
+	if e.Publisher != nil {
+		publishRaised(e.Publisher, e.Metrics, raised)
 	}
 	return raised, nil
 }
