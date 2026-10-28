@@ -1,6 +1,6 @@
 # Feature 23 — Load, tuning & demo (P23)
 
-Status: planned on `phase-23-load-tuning-demo`, not implemented, 2026-10-28. Validation results and deviations are appended at the end when the phase runs.
+Status: implemented on `phase-23-load-tuning-demo`, 2026-10-28, one commit per task group (G1–G4, then G6). Validation results and deviations are appended at the end.
 Source plan: /root/.claude/plans/p23-plan-zippy-donut.md (approved, self-gate passed with two driver amendments: G0 SPEC-AMEND reading pre-resolved — no row owed for the GF-341 envelope field; SPEC-AMEND repeat aligned).
 
 ## Scope
@@ -203,3 +203,52 @@ Flake policy: an `internal/hub` failure is re-run in isolation before it fails t
 - Changes to `internal/config` (no tuning change, GF-342).
 - Push and commit (done only on request).
 - Any content beyond roadmap P23.
+
+## Validation results and deviations
+
+Run on 2026-10-28 on the phase branch, host with Docker, node v26.12.0, Go 1.27.3 via `deploy/.local/tools.mk`. k6 absent (`command -v k6` empty).
+
+### G0 preflight (baseline)
+
+- `make fmt-check` on the branch before any edit: exit 0. `make lint`: `0 issues.`
+- Clean baseline: `git worktree` of HEAD `2560493` (no P23 edits), `make test`: exit 0, 31 packages `ok`. Log not kept beyond the run; the worktree was removed.
+- Typecheck baselines (apps untouched by this phase): `npm --prefix apps/web run typecheck` exit 0 (`tsc -b`); `npm --prefix apps/driver-pwa run typecheck` exit 0 (`tsc -b`).
+- k6: `command -v k6` empty, exit 1. **Standing reason:** k6 is not installed on this host, so no k6 run is part of validation (GF-16, GF-346).
+- node: `/usr/bin/node`, v26.12.0 present, so the node syntax case runs (GF-346).
+- Pins verified: `positions.batch` element keys `device_ts`, `server_ts` (`internal/ingest/stamp.go:36-37`). Heap gauge `go_memstats_heap_inuse_bytes` from `collectors.NewGoCollector` (`internal/observability/metrics.go:19`). `/auth/login` body `{"email","password"}` and response `access_token` (`internal/auth/http.go:39-46`). Email validation is `mail.ParseAddress` (`internal/users/http.go:208`), so `.example` addresses are accepted (existing tests use them).
+- SPEC-AMEND reading re-verified: `specs/constitution/tech-stack.md:211` pins the subject `jobs.events.<fleet_id>` only. No body field is pinned, so no row is owed for `driver_user_id`.
+- GF-341 consumers: the hub decodes with `json.Unmarshal` (ignores unknown fields). The web reducer reads typed fields. `DisallowUnknownFields` appears only on request bodies and ingest positions, never on the job envelope.
+
+### Check results
+
+- **(a)** `make fmt-check`: exit 0. `make lint`: `0 issues.` `make test` (final, after all edits): exit 0, 140 s, 32 packages `ok`, no `FAIL`. The packages the check names are all `ok`: `internal/seed` (118 s), `internal/hub` (8.4 s), `internal/jobs` (60 s), `tools/loadtest` (1.2 s). Also `tools/seed` and `services/api`. Web and driver-pwa typecheck exit 0, same as baseline.
+- **(b)** Scope fence, `git diff --name-only main...HEAD` (see the final commit list in the report). Every path is in the fence except the `services/api` test edit recorded as deviation D1. `prompts/**` and the spec are in the fence. No `README.md`, `e2e/**`, `apps/**`, `db/migrations/**`, `specs/constitution/**`, `.github/**`, `deploy/docker-compose.yml`, `internal/config/**`, `internal/auth/**` path is touched.
+- **(c)** Secrets: `git diff main...HEAD | grep -E "fo_dev_|JWT_SECRET=|TOKEN=[^\"\$]"` finds only doc text (`specs/...`) and the `TOKEN is required: pass -e TOKEN=<...>` error message. The `password` hits are identifiers and spec prose. No key or secret value is present.
+- **(d)** k6 NOT RUN (standing reason above). `make loadtest-static` (`go test ./tools/loadtest/... -count=1`): `ok`. `TestK6ScriptsHaveThresholds`, `TestK6ScriptsBalanced` and `TestK6ScriptsParseWithNode` all PASS (the node case ran, not skipped). `make -n loadtest-ws` only printed the command. The `loadtest*` targets were never executed.
+- **(e)** `wc -l CLAUDE.md`: **199** (below 200). The `make seed-demo` stub line was replaced with the real semantics. A 4-line "Load and demo (P23)" block was added.
+- **(f)** `make seed-demo` exit 0 on a seeded database, idempotent. Proven by testcontainer tests, not against a live stack. `TestDemoRerunIsNoOpExitZero` (internal/seed) and `TestSeedDemoTargetExitsZeroOnRerun` (tools/seed, CLI `run()` against a migrated PostGIS container; stdin empty, so no prompt) both PASS. `TestDemoPasswordsNotLogged` PASS (no admin or driver password on stdout or stderr).
+- **(g)** 10k race run:
+  - `make hub-scale` (quiet): exit 0, wall 11 s.
+  - Verbose re-run `go test ./internal/hub -race -count=1 -timeout 30m -run TestScaleConnections -v -args -scale.conns=10000`: `10000 synthetic connections in 5 fleets: auth, batch, and close in 6.344452758s (budget 10m0s)`, PASS 7.49 s. A second run: 6.98 s, PASS. Zero `DATA RACE` lines.
+  - **The GF-343 fallback was not triggered.** The race detector did not abort, so no N-search and no non-race run were needed.
+- **(h)** Demo doc cross-check: `make` targets named in `docs/demo.md` (`loadtest`, `seed-demo`) exist in the Makefile. The doc restates no port numbers. The only env-style tokens are the Make variables `SEED_ARGS` and `TOKEN`. Commands defer ports and env names to CLAUDE.md, per the G6 rule.
+- **(i)** Role matrix: `git diff main...HEAD | grep -E "^\+.*e\.(GET|POST|PATCH|PUT|DELETE)\("` returns nothing, so no route was added. `internal/hub/conn.go` is unchanged, so `driver` is still allowed on `/stream`. The filter only narrows.
+- **(j)** `TestK6ScriptsHaveThresholds` PASS. Each script's thresholds match its §5 row.
+
+### Tuning record (GF-342)
+
+Analysis only, as decided. No `FLEETOPS_*` default changed and `internal/config` is untouched. The GF-342 table in Requirements is the record. Final values: FLUSH_INTERVAL `1s`, FLUSH_MAX `500`, ACCURACY_MAX_M `50`, WS_ROOM_CAP `2000`, PRESENCE_TTL `120s`, all kept. The values are not claimed as measured. The k6 run that would measure them was not executed.
+
+### Deviations
+
+- **D1 (outside the fence, needs your call).** Three exact-count assertions in `services/api/driver_publish_test.go` (2) and `services/api/jobs_publish_test.go` (1) pinned the `jobs.events` envelope at exactly 7 fields. GF-341 adds `driver_user_id`, so they went 7 → 8. These are the only lines changed in `services/api`. `make test` could not be green without them, and the fence did not list `services/api/**`. The change is a separate commit so it is easy to see or revert.
+- **D2.** `make hub-scale` passes `-timeout 30m` before `-args`. The spec's order would hand `-timeout` to the test binary, which rejects it. A `SCALE_CONNS` Make variable (default 10000) was added for the N-search fallback. It is a Make variable, not an env var, so D-22 does not apply.
+- **D3.** `TestDemoPasswordsNotLogged` and `TestSeedDemoTargetExitsZeroOnRerun` live in `tools/seed/demo_cli_test.go`, not `internal/seed`. They need `run()` and its stdout and stderr. `testinfra.NewMigratedDB` exposes no DSN, so these tests start their own PostGIS container (`testinfra.StartPostgis`) and migrate it. They `t.Chdir` into a temp dir so the default file paths land there.
+- **D4.** Demo passwords are generated and policy-checked inside the per-van login step, before that login's hash and insert. The spec's "before any hash or write" is read per login, not before the first write of the run. The van, device and driver rows of earlier vans already exist when a later login is generated.
+- **D5.** The ingest-burst heap check is `heap_within_2x` (a per-sample Rate, threshold `rate>=1`) plus `heap_inuse_bytes` `max>0`. k6 threshold expressions cannot reference the first post-warmup sample. The 2× rule is enforced in the sampler, which is the same check in a different form.
+- **D6.** Driver licence numbers are `DEMO000001`…`DEMO000050` and names `Demo Driver 001`…`050`. The spec left them open. `CreateDriver` needs a licence.
+- **D7.** `dialAuthRaw` (a helper shared with the 1k test) moved its dial timeout from 30 s to 60 s (`scaleOpTimeout`), per the G2 budget. `TestThousandSyntheticConnections` is otherwise unchanged.
+- **D8.** Existing hub fixtures were updated for the GF-341 envelope: `TestHubDriverReceivesOnlyOwnJobUpdated`, and the job marker in `TestAlertRaisedReachesDispatcherNotDriver`. Driver job updates need `driver_user_id` now. The test names and their assertions are the same.
+- **D9.** Not executed end-to-end: `docs/demo.md` describes the walkthrough, but no live stack was run in P23. The simulator timing sentence in step 2 is narration, not a measured result.
+- **D10.** Commits: the user's instruction (one commit per group) overrode the spec's "commits only on request" line.
+
