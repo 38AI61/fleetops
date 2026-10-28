@@ -185,3 +185,13 @@ Values come from the environment, like the names above. Unset or empty means the
 - Rebuild: pair state loads lazily per vehicle from `geofence_events` over the last 24 h.
 - Candidate SQL: `geofences_bbox_gix` prefilter, then `ST_Covers` (polygon) or `ST_DWithin` (circle).
 - Metrics: `fleetops_geofence_evaluation_duration_seconds`, `fleetops_geofence_events_total{kind}`, `fleetops_geofence_debounced_total`, `fleetops_geofence_evaluation_failures_total{stage}` (stage: `candidates`, `state`, `insert`).
+
+## Alerts (P19)
+
+- Rule kinds: `device_silent` (threshold_s default 600, warning), `eta_slip` (seeded disabled, no evaluator until P20), `geofence_exit_outside_schedule` (critical). Three `alert_rules` rows per fleet.
+- Routes (JWT): `GET /alerts?since=&limit=` and `PATCH /alerts/:id/ack` (admin, manager, dispatcher); `GET` and `PATCH /alert-rules` (admin, manager). Driver 403, anonymous 401.
+- Evaluator: `internal/alerts`, started in `services/ingest`, every 30 s under `pg_try_advisory_xact_lock`.
+- `alerts` is append-only except the one-time ack (trigger `alerts_guard`). DELETE and TRUNCATE are refused.
+- Fanout: `alerts.<fleet_id>` on core NATS, type `alert.raised`. Drivers never receive it.
+- Notifier: `alerts.LogNotifier` logs critical alerts for managers. It is a stub, with no email or push.
+- Web: bell in the topbar of the map, jobs and zones pages, polling `GET /alerts` every 30 s.
