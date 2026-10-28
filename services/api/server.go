@@ -21,6 +21,7 @@ import (
 	"fleetops/internal/mapview"
 	"fleetops/internal/proofs"
 	"fleetops/internal/registry"
+	"fleetops/internal/reports"
 	"fleetops/internal/users"
 )
 
@@ -102,6 +103,9 @@ func NewServer(d Deps) *echo.Echo {
 
 	alh := &alerts.Handler{Store: &alerts.Store{DB: d.DB}, Clock: d.Clock}
 	alh.Register(e, auth.RequireAuth(d.Issuer))
+
+	reh := &reports.Handler{Store: &reports.Store{DB: d.DB}, Clock: d.Clock}
+	reh.Register(e, auth.RequireAuth(d.Issuer))
 
 	// Device route: no JWT group (GF-64). The device key is checked inside the handler.
 	ih := &ingest.Handler{DB: d.DB, Salt: d.DeviceKeySalt, Clock: d.Clock, Gate: d.Gate, JS: d.NATS}

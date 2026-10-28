@@ -51,7 +51,7 @@ func seedGolden(f *fx) (fleet int64, drivers map[string]int64) {
 	fleet = f.fleet("golden-ny", "America/New_York")
 	d1 := f.driver(fleet, "Ada")
 	d3 := f.driver(fleet, `Cy, "the" jobs-only`)
-	f.driver(fleet, "Dee")
+	dee := f.driver(fleet, "Dee")
 	v1 := f.vehicle(fleet)
 	v2 := f.vehicle(fleet)
 	v3 := f.vehicle(fleet)
@@ -95,7 +95,7 @@ func seedGolden(f *fx) (fleet int64, drivers map[string]int64) {
 	f.job(fleet, "failed", v1, d1, nil, nil)
 	f.job(fleet, "delivered", v3, d3, &win3, &d10b)
 
-	return fleet, map[string]int64{"d1": d1, "d3": d3}
+	return fleet, map[string]int64{"d1": d1, "d3": d3, "dee": dee}
 }
 
 // TestGoldenDay rolls up the golden fixture on the 23 h DST day and checks each
