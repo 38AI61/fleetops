@@ -195,3 +195,10 @@ Values come from the environment, like the names above. Unset or empty means the
 - Fanout: `alerts.<fleet_id>` on core NATS, type `alert.raised`. Drivers never receive it.
 - Notifier: `alerts.LogNotifier` logs critical alerts for managers. It is a stub, with no email or push.
 - Web: bell in the topbar of the map, jobs and zones pages, polling `GET /alerts` every 30 s.
+
+## ETA (P20)
+
+- OSRM client and ETA loop: `internal/eta`. `OSRM_URL` is in the env list above; default `http://127.0.0.1:10005`.
+- The loop runs in `services/ingest` every 30 s. Each active job gets at most one OSRM call per 5 min, and one on assign.
+- `eta_slip` is seeded disabled. Enable it per fleet with `PATCH /alert-rules` (`{"rules":[{"kind":"eta_slip","enabled":true}]}`, admin or manager).
+- Routing data is an operator step: `sh deploy/osrm/prepare.sh <pbf-file-name>`. See `docs/osrm.md`.
