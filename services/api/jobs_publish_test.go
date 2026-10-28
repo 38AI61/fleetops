@@ -81,8 +81,8 @@ func TestJobsPublishOnePerTransition(t *testing.T) {
 		t.Fatalf("assign = %d %s", r.status, r.body)
 	}
 	ev := next("assign")
-	if len(ev) != 7 {
-		t.Fatalf("assign body has %d fields, want exactly 7: %v", len(ev), ev)
+	if len(ev) != 8 {
+		t.Fatalf("assign body has %d fields, want exactly 8 (driver_user_id, GF-341): %v", len(ev), ev)
 	}
 	if ev["type"] != "job.updated" || ev["from_state"] != "created" || ev["to_state"] != "assigned" {
 		t.Fatalf("assign body = %v", ev)
