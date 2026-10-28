@@ -95,6 +95,7 @@ func run(ctx context.Context) error {
 	}
 	// /metrics sits beside /stream on the loopback listener (GF-330). It is not behind JWT (GF-329).
 	reg := observability.NewRegistry()
+	reg.MustRegister(newWSConnectionsGauge(h.Counters()))
 	mux := http.NewServeMux()
 	mux.Handle("/stream", h)
 	mux.Handle("/metrics", observability.Handler(reg))
