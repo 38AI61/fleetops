@@ -184,6 +184,7 @@ Runnable on this host. Each check has a pass condition.
   - `services/api/server.go` and `services/api/*_test.go`;
   - `apps/web/src/geofences/**`, `apps/web/src/map/MapView.tsx`, `apps/web/src/App.tsx`, `apps/web/vite.config.ts`;
   - `specs/features/17-geofence-registry-drawing.md`;
+  - `db/roundtrip_test.go` (amended at validation, 2026-10-28: the version constants 9→10 and the comment only — the round-trip test must track the newest migration, per this spec's G1 requirement that the existing round-trip test pass with 010);
   - `prompts/` (new files only);
   - `CLAUDE.md`;
   - `specs/constitution/mission.md` (one §7 row).
@@ -261,7 +262,7 @@ Run on this host from the repo root. Exit codes are from the final run after G4.
 
 ## Deviations
 
-- **D1: `db/roundtrip_test.go` is outside the fence and still expects version 9.** The spec requires the existing round-trip test to pass with 010, but the test hard-codes `assertVersion(t, m, 9)` at lines 41 and 59. The fence does not list that file, so it was left unchanged. The migration itself is correct: the up, down and up steps and the new schema checks work. The fix is to change those two constants to `10`, and it needs a fence amendment or approval. Until then `make test` exits 2.
+- **D1: `db/roundtrip_test.go` expected version 9 — RESOLVED.** The spec requires the existing round-trip test to pass with 010, but the test hard-coded `assertVersion(t, m, 9)` at lines 41 and 59. The fence was amended to include the file and the two constants (plus the comment) were changed to 10 at validation time on 2026-10-28 by the pipeline driver. `make test` is expected green after this change.
 - **D2: check (j) grep returns 1.** The match is the PL/pgSQL `BEGIN`, not transaction control. The spec's intent (no transaction control in migrations, GF-5) holds, and the repo's own check agrees.
 - **D3: circle bbox formula changed (GF-262).** The spec's `dLat = r/111320 × 1.001` does not contain the circle. On a sphere, 111320 m per degree is larger than the true 111195 m, so 100 km is about 11 m short. On WGS84 the equatorial meridian degree is 110574 m, so the miss is about 560 m. `internal/geofence/bbox.go` uses 110574 m per degree with a 1.01 margin. It also uses the cosine at the poleward edge and widens longitude to ±180 when the circle reaches near a pole or crosses the antimeridian. `TestCircleBboxCovers` checks containment at 45° steps, for three Earth radii, at 0°, 52.5°, 70° and the antimeridian.
 - **D4: no nav link to `/zones` yet.** The spec asks for a nav link in `App.tsx`, but `App.tsx` renders no header, and the existing links live in `JobsPage.tsx` and `MapPage.tsx`, which are outside the fence. The route `/zones` exists and is guarded. The page links back to `/map` and `/jobs`. A link from those pages needs a fence amendment.
