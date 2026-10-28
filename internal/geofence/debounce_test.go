@@ -268,6 +268,7 @@ func squareFence(t testing.TB, db *sql.DB, fleet int64, dwell *int) fenceSpec {
 // msgID is a deterministic message id for the i-th fix of a stream.
 func msgID(i int) uuid.UUID {
 	var u uuid.UUID
+	//nolint:gosec // i is a small non-negative index of a generated test stream
 	binary.BigEndian.PutUint64(u[8:], uint64(i))
 	return u
 }
