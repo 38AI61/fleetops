@@ -102,7 +102,7 @@ func run() error {
 	}()
 
 	// The alert evaluator stops and is joined before the DB closes (GF-291).
-	evaluator := &alerts.Evaluator{DB: db, Clock: time.Now, Metrics: alerts.NewMetrics(reg), Publisher: nc}
+	evaluator := &alerts.Evaluator{DB: db, Clock: time.Now, Metrics: alerts.NewMetrics(reg), Publisher: nc, Notifier: alerts.LogNotifier{}}
 	evalCtx, cancelEval := context.WithCancel(ctx)
 	evalDone := make(chan struct{})
 	go func() {

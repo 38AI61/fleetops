@@ -36,6 +36,8 @@ type Evaluator struct {
 	Metrics *Metrics
 	// Publisher sends alert.raised after each commit. Nil skips the publish (GF-299).
 	Publisher Publisher
+	// Notifier is called after commit for critical alerts (GF-300). Nil skips it.
+	Notifier Notifier
 }
 
 // Run runs one pass per interval until ctx is done. A pass error is logged and
@@ -140,6 +142,9 @@ func (e *Evaluator) Pass(ctx context.Context) ([]Raised, error) {
 	}
 	if e.Publisher != nil {
 		publishRaised(e.Publisher, e.Metrics, raised)
+	}
+	if e.Notifier != nil {
+		e.notifyCritical(ctx, raised)
 	}
 	return raised, nil
 }
