@@ -1,0 +1,10 @@
+# One datasource: the local prometheus on 127.0.0.1:10014 (P22, GF-333).
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    uid: prometheus
+    type: prometheus
+    access: proxy
+    url: http://127.0.0.1:10014
+    isDefault: true

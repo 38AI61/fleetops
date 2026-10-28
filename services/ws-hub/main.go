@@ -21,6 +21,7 @@ import (
 	"fleetops/internal/auth"
 	"fleetops/internal/config"
 	"fleetops/internal/hub"
+	"fleetops/internal/observability"
 )
 
 // addr is the listen address. It is the reserved ws-hub host port (PORTS.md).
@@ -92,8 +93,12 @@ func run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	// /metrics sits beside /stream on the loopback listener (GF-330). It is not behind JWT (GF-329).
+	reg := observability.NewRegistry()
+	reg.MustRegister(newWSConnectionsGauge(h.Counters()))
 	mux := http.NewServeMux()
 	mux.Handle("/stream", h)
+	mux.Handle("/metrics", observability.Handler(reg))
 	srv := &http.Server{Handler: mux, ReadHeaderTimeout: 10 * time.Second}
 	serveErr := make(chan error, 1)
 	go func() { serveErr <- srv.Serve(ln) }()

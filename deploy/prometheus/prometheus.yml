@@ -1,0 +1,20 @@
+# Scrape config for the three FleetOps /metrics endpoints (P22, GF-333).
+# Every target is a loopback listener on the host; prometheus runs with host networking (GF-332).
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: fleetops-api
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["127.0.0.1:10010"]
+
+  - job_name: fleetops-ingest
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["127.0.0.1:10008"]
+
+  - job_name: fleetops-ws-hub
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["127.0.0.1:10011"]

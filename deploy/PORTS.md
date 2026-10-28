@@ -22,5 +22,13 @@ Infrastructure services bind to `127.0.0.1` only.
 | ws-hub | 8090 | 10011 | local `go run` |
 | web dispatcher | 5173 | 10012 | local Vite dev |
 | driver-pwa | 5174 | 10013 | local Vite dev |
+| ingest metrics | — (`-metrics-addr`) | 10008 | local `go run`, `127.0.0.1` only |
 
-Unassigned in range: 10000, 10001, 10008, 10009, 10014–10019.
+## Observability (Phase 22 — `deploy/docker-compose.yml`, host network)
+
+| Service | Container port | Host port | Runtime |
+|---|---|---|---|
+| prometheus | host network (`--web.listen-address=127.0.0.1:10014`) | 10014 | compose, `127.0.0.1` |
+| grafana | host network (`GF_SERVER_HTTP_PORT=10015`) | 10015 | compose, `127.0.0.1` |
+
+Unassigned in range: 10000, 10001, 10009, 10016–10019.

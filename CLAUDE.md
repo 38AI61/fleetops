@@ -19,14 +19,13 @@ Full allocation and reserved ports: `deploy/PORTS.md`. All host ports are in 100
 | ws-hub (reserved, local go run) | 8090 | 10011 |
 | web dispatcher (reserved, vite dev) | 5173 | 10012 |
 | driver-pwa (reserved, vite dev) | 5174 | 10013 |
+| ingest metrics (`-metrics-addr`, local `go run`) | — | 10008 |
+| prometheus (compose, host network) | — | 10014 |
+| grafana (compose, host network) | — | 10015 |
 
 ## Local infrastructure
 
-Compose file: `deploy/docker-compose.yml`
-
-Up: `docker compose -f deploy/docker-compose.yml up -d`; down: `docker compose -f deploy/docker-compose.yml down`.
-
-The `nats` service runs with `-js` (JetStream, GF-62).
+Compose file `deploy/docker-compose.yml`. Up: `docker compose -f deploy/docker-compose.yml up -d`; down: `docker compose -f deploy/docker-compose.yml down`. The `nats` service runs with `-js` (JetStream, GF-62).
 
 ## Make targets
 
@@ -49,7 +48,7 @@ Run from the repo root. `make help` lists every target.
 - Host override: `deploy/.local/tools.mk` (gitignored) may set `GO`, `GOFMT`, `GOLANGCI_LINT`, `MIGRATE` to host paths. The Makefile includes it.
 - `make migrate` requires `DATABASE_URL` in the environment; it is not read from `deploy/.env`.
 - Local API: `DATABASE_URL=… JWT_SECRET=… DEVICE_KEY_SALT=… NATS_URL=nats://127.0.0.1:10004 REDIS_URL=redis://127.0.0.1:10003 MINIO_ENDPOINT=127.0.0.1:10006 MINIO_KEY=… MINIO_SECRET=… go run ./services/api` listens on `127.0.0.1:10010` (`-addr` overrides). It does not run migrations. MinIO must be reachable at boot (P12).
-- Local ingest consumer: same env as the API, `DATABASE_URL=… JWT_SECRET=… DEVICE_KEY_SALT=… NATS_URL=nats://127.0.0.1:10004 REDIS_URL=redis://127.0.0.1:10003 go run ./services/ingest`. No listener; it drains `GPS_RAW` into `positions`, publishes to Redis, and runs partition maintenance.
+- Local ingest consumer: same env as the API, `DATABASE_URL=… JWT_SECRET=… DEVICE_KEY_SALT=… NATS_URL=nats://127.0.0.1:10004 REDIS_URL=redis://127.0.0.1:10003 go run ./services/ingest`. Its only listener is `/metrics` on `-metrics-addr` (`127.0.0.1:10008`, P22); it drains `GPS_RAW` into `positions`, publishes to Redis, and runs partition maintenance.
 - Local WS hub: same env as the API, `DATABASE_URL=… JWT_SECRET=… DEVICE_KEY_SALT=… NATS_URL=nats://127.0.0.1:10004 REDIS_URL=redis://127.0.0.1:10003 go run ./services/ws-hub` listens on `127.0.0.1:10011` (`-addr` overrides). It does not connect to Postgres. Clients open `WS /stream?fleet=<id>` and send `{"type":"auth","token":…}` as the first frame.
 - Local simulator (P8): `go run ./tools/simulator --fleet=50 --rate=5s --api http://127.0.0.1:10010`. It reads `deploy/.local/devices.json` and needs no env vars.
 - `JWT_SECRET` must be at least 32 bytes or the API and `make seed` refuse to start, and `DEVICE_KEY_SALT` is required and must be at least 32 bytes, or the API refuses to start before it opens the database (GF-30); generate each per shell with `openssl rand -hex 32`. `DEVICE_KEY_SALT` is the HMAC key for device keys (D-29) and license hashes (D-31).
@@ -58,8 +57,7 @@ Run from the repo root. `make help` lists every target.
 - Ingest (P4): `POST /ingest/position` is device-key authenticated. The key goes in the `X-Device-Key` header, never in the body or `Authorization`. Any JWT gets 401 on this route (GF-52, GF-64). Startup creates the `GPS_RAW` stream (GF-59).
 - Map (P8): `GET /map/vehicles?bbox=minLng,minLat,maxLng,maxLat`, JWT, any role, fleet-scoped.
 - Migration rules (GF-5): files are `db/migrations/NNN_snake_name.up.sql` and `.down.sql`, sequential from `001`, no timestamps; each file is one transaction-friendly script (no `BEGIN`/`COMMIT`, no `CREATE INDEX CONCURRENTLY`); migrations are forward-only once merged to `main`, with `down` kept for dev and the round-trip test; a dirty `schema_migrations` makes `make migrate` fail — fix the schema by hand, then `force`, and never edit `schema_migrations` by SQL.
-- Tests and CI use `postgis/postgis:16-3.4` (`testinfra.PostgisImage`, GF-12). Compose uses the same tag (GF-62).
-- CI (`.github/workflows/ci.yml`) runs the same make targets as the local gates.
+- Tests and CI use `postgis/postgis:16-3.4` (`testinfra.PostgisImage`, GF-12); compose uses the same tag (GF-62). CI (`.github/workflows/ci.yml`) runs the same make targets as the local gates.
 
 ## Environment variables
 
@@ -79,11 +77,9 @@ Values come from the environment, like the names above. Unset or empty means the
 
 ## Frontend (P9)
 
-- Install: `npm --prefix apps/web ci --include=dev`
-- Dev server: `npm --prefix apps/web run dev` → `http://localhost:10012` (`http://127.0.0.1:10012`)
+- Install: `npm --prefix apps/web ci --include=dev`. Dev server: `npm --prefix apps/web run dev` → `http://localhost:10012` (`http://127.0.0.1:10012`)
 - Build (typecheck + build): `npm --prefix apps/web run build`
-- Typecheck only: `npm --prefix apps/web run typecheck`
-- Unit and component tests: `npm --prefix apps/web test`
+- Typecheck only: `npm --prefix apps/web run typecheck`. Unit and component tests: `npm --prefix apps/web test`
 - Dev proxy: `/auth`, `/map`, `/vehicles`, `/jobs` → `127.0.0.1:10010`; `/stream` → `127.0.0.1:10011` (WebSocket)
 
 ## Jobs (P10)
@@ -116,10 +112,8 @@ Values come from the environment, like the names above. Unset or empty means the
 
 ## Driver PWA (P14)
 
-- Install: `npm --prefix apps/driver-pwa ci --include=dev`
-- Dev server: `npm --prefix apps/driver-pwa run dev` → `http://127.0.0.1:10013` (`strictPort`; GF-225 uses 10013, not the roadmap's 5174)
-- Build (typecheck, build, PWA artifact check): `npm --prefix apps/driver-pwa run build`
-- Preview (serves the built service worker): `npm --prefix apps/driver-pwa run preview` → `http://127.0.0.1:10013`
+- Install: `npm --prefix apps/driver-pwa ci --include=dev`. Dev server: `npm --prefix apps/driver-pwa run dev` → `http://127.0.0.1:10013` (`strictPort`; GF-225 uses 10013, not the roadmap's 5174)
+- Build (typecheck, build, PWA artifact check): `npm --prefix apps/driver-pwa run build`. Preview (serves the built service worker): `npm --prefix apps/driver-pwa run preview` → `http://127.0.0.1:10013`
 - Typecheck only: `npm --prefix apps/driver-pwa run typecheck`. Tests: `npm --prefix apps/driver-pwa test`
 - Dev and preview proxy: `/auth`, `/driver`, `/ingest` → `127.0.0.1:10010`. No `/stream`, `/jobs`, `/vehicles` or `/map`. A later WebSocket from this origin must add `127.0.0.1:10013` to the hub allowlist (GF-110).
 - Device key: `localStorage` key `fleetops.driver.deviceKey.v1`. It is not cleared on logout. It is cleared when ingest returns 401. The XSS exposure of `localStorage` is accepted for P14.
@@ -190,4 +184,10 @@ Values come from the environment, like the names above. Unset or empty means the
 - Rollup: `internal/reports`, run from `services/ingest`. Boot pass, then every 15 min under advisory lock `ROLL` (`0x524f4c4c`). Yesterday is recomputed in fleet-local `[00:00, 00:30)`. Writes are idempotent (GF-323).
 - Formulas (GF-321): a leg is two consecutive samples of one vehicle inside the local day with gap ≤ 300 s. Distance is the `ST_DistanceSphere` sum. Idle is a leg whose opening speed is < 1.0 km/h, counted in gap seconds. A leg goes to the driver of the pairing active at its opening sample. On-time is `delivered_at <= window_end` over jobs with a full window. Jobs count by `delivered_at` in fleet time.
 - CSV (GF-327): `date,driver_id,driver_name,jobs_completed,on_time_count,on_time_denom,on_time_pct,distance_m,idle_s`, CRLF, streamed; `on_time_pct` is empty when null.
-- Worker metrics `fleetops_reports_rollup_*` are registered privately until P22.
+- Worker metrics `fleetops_reports_rollup_*` are exposed on ingest `/metrics` (P22).
+
+## Observability (P22)
+
+- `/metrics` (Prometheus text, no JWT, loopback only): api `127.0.0.1:10010`, ws-hub `127.0.0.1:10011`, ingest `127.0.0.1:10008` (`-metrics-addr`). No series carries `fleet_id` (GF-329, GF-330); `fleetops_ws_connections` is the WS gauge (GF-331).
+- Compose `prometheus` (`127.0.0.1:10014`) and `grafana` (`127.0.0.1:10015`), host network (GF-332). Scrape config `deploy/prometheus/prometheus.yml`; dashboard `deploy/grafana/dashboards/fleetops-observability.json`, provisioned from `deploy/grafana/provisioning/`.
+- Traces: one `jobs.assign` span (GF-335). OTLP HTTP when `OTEL_EXPORTER_OTLP_ENDPOINT` is set; unset means no-op (D-36).

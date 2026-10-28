@@ -78,6 +78,29 @@ services:
       - minio_data:/data
     restart: unless-stopped
 
+  # Host networking: every scrape target is a loopback listener (GF-330, GF-332). Both bind
+  # 127.0.0.1 via their own flag and env. Needs a Linux Docker Engine (see GF-332 residual).
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    network_mode: host
+    command: ["--config.file=/etc/prometheus/prometheus.yml", "--web.listen-address=127.0.0.1:10014"]
+    volumes:
+      - ./prometheus:/etc/prometheus:ro
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:12.1.0
+    network_mode: host
+    environment:
+      GF_SERVER_HTTP_ADDR: 127.0.0.1
+      GF_SERVER_HTTP_PORT: "10015"
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    restart: unless-stopped
+
 volumes:
   postgres_data:
   redis_data:
