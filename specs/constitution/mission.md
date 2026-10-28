@@ -92,5 +92,6 @@ Full list in `roadmap.md` §4 (README §2.2 stretch items, §15 cloud profile, a
 | GF-12 | Test and CI PostGIS image tag `postgis/postgis:16-3.4` (`testinfra.PostgisImage`); README §12 and compose keep `16` (not a published tag) until compose is touched in P4 | §12 | SPEC-AMEND image tag correction | P1 |
 | GF-247 | CI `e2e` job runs the Go services and Vite dev servers as host processes against a compose subset (postgres, redis, nats, minio; `osrm` not started); browsers installed per run | §9 (testing), §7 process | SPEC-AMEND addition | P16 |
 | D-33 (trigger timing) | geofence_events append-only trigger created in P17 (roadmap P17 scope) instead of P18 (R-7; tech-stack §11); P17 writes no rows | §2.1.6, §5; R-7 | SPEC-AMEND deviation | P17 |
+| GF-332 | prometheus and grafana compose services use host networking (`network_mode: host`) and bind 127.0.0.1 through their own flag and env (10014, 10015). The tech-stack §4 "9090→10014" mapping wording is replaced; the host port values are unchanged | §4 compose port mapping (tech-stack §4), GF-330 | SPEC-AMEND deviation | P22 |
 
 Rule: any new SPEC-AMEND gets a row here and a decision ID (D-nn from the plan, or GF-n for self-gate additions) in `tech-stack.md` §11 (D-40).
