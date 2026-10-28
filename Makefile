@@ -10,7 +10,7 @@ GOLANGCI_LINT_VERSION := v2.15.0
 MIGRATE_VERSION := v4.18.3
 MIGRATE_ARGS ?= up
 
-.PHONY: help tools fmt-check lint test migrate seed seed-demo hub-scale loadtest loadtest-ws loadtest-assign loadtest-report loadtest-ingest-steady loadtest-ingest-burst loadtest-static e2e e2e-stack-up e2e-stack-down e2e-test
+.PHONY: help tools fmt-check lint test migrate seed seed-demo hub-scale loadtest loadtest-ws loadtest-assign loadtest-report loadtest-ingest-steady loadtest-ingest-burst loadtest-static e2e e2e-stack-up e2e-stack-down e2e-test cloud-image
 .DEFAULT_GOAL := help
 
 help: ## list targets
@@ -28,6 +28,9 @@ lint: fmt-check ## gofmt check, then golangci-lint
 
 test: ## run all Go tests with the race detector
 	$(GO) test ./... -race -count=1
+
+cloud-image: ## build the merged cloud container (deploy/cloud/Dockerfile.render) as fleetops:cloud
+	docker build -f deploy/cloud/Dockerfile.render -t fleetops:cloud .
 
 migrate: ## apply migrations (MIGRATE_ARGS="up" default; e.g. MIGRATE_ARGS="down 1")
 	@if [ -z "$$DATABASE_URL" ]; then echo "DATABASE_URL is not set" >&2; exit 2; fi

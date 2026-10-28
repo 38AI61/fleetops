@@ -1,0 +1,36 @@
+# Cloud profile image (P24, GF-349, GF-350). One container runs the front proxy,
+# embedded NATS, MinIO and the api, ingest and ws-hub. No secret, token, salt or
+# database URL appears in any ARG or ENV; they arrive at run time (D-40).
+
+ARG GO_IMAGE=golang:1.27.3-bookworm
+# The official minio/minio image is gone from Docker Hub. This is the image that
+# compose already pins (bitnamilegacy/minio). Its binary lives at /opt/bitnami.
+ARG MINIO_IMAGE=bitnamilegacy/minio:2025.7.23-debian-12-r5
+ARG RUNTIME_IMAGE=debian:bookworm-slim
+
+FROM ${MINIO_IMAGE} AS minio
+
+FROM ${GO_IMAGE} AS build
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN CGO_ENABLED=0 go build -trimpath -o /out/fleetops-api ./services/api \
+ && CGO_ENABLED=0 go build -trimpath -o /out/fleetops-ingest ./services/ingest \
+ && CGO_ENABLED=0 go build -trimpath -o /out/fleetops-ws-hub ./services/ws-hub \
+ && CGO_ENABLED=0 go build -trimpath -o /out/fleetops-cloud ./services/cloud
+
+FROM ${RUNTIME_IMAGE}
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+COPY --from=minio /opt/bitnami/minio/bin/minio /usr/local/bin/minio
+COPY --from=build /out/ /usr/local/bin/
+RUN useradd --system --uid 10001 --no-create-home --home-dir /data fleetops \
+ && mkdir -p /data \
+ && chown fleetops:fleetops /data
+ENV FANOUT_MODE=nats PORT=8000 OSRM_URL=https://router.project-osrm.org
+USER fleetops
+WORKDIR /data
+EXPOSE 8000
+ENTRYPOINT ["/usr/local/bin/fleetops-cloud"]
