@@ -405,3 +405,20 @@ Extra checks run for G8:
 - **D4 (smoke WS count window).** The spec says "count `position.batch` frames for up to 60 s" while the simulator runs for 90 s. The implementation counts frames over the whole 90 s simulator run. This gives a superset of the spec's window and is easier to reason about. It can be changed to 60 s if the orchestrator wants the exact window.
 - **D5 (`MINIO_IMAGE` pin).** The Dockerfile build pulls `bitnamilegacy/minio:2025.7.23-debian-12-r5` (G4 pin). The `bitnamilegacy` namespace is what G4 pinned, and the build used it unchanged. The G4 test asserts the copy is present, not the tag. Recorded here so the tag is visible; the tag itself was not re-verified against upstream in this run.
 - **D6 (live smoke and orchestrator steps).** S0–S9 are not run here, by scope. `make cloud-smoke` against a live container was not run, and the Render, Neon and Pages wiring was not touched.
+
+## Orchestrator smoke record (S0–S9)
+
+Run by the orchestrator on 2026-10-28 after the implementation merged to the phase branch, on this host (Docker 29.1.3), against the live Neon project `frosty-hall-37378198`. The Neon URI stayed outside the repo at `/root/.local/tmp/deploy-probes/neon-uri.txt` and in the 0600 env file `/root/.local/tmp/deploy-probes/cloud-smoke.env`; it was never printed or committed.
+
+- **S0** — env file written at `/root/.local/tmp/deploy-probes/cloud-smoke.env`, mode 0600, outside the repo: `DATABASE_URL` (from `neon-uri.txt`), fresh `JWT_SECRET` and `DEVICE_KEY_SALT` (`openssl rand -hex 32` each), `MINIO_KEY`/`MINIO_SECRET` (random), `SEED_PASSWORD` (random), `FANOUT_MODE=nats`. Pass.
+- **S1** — schema before: `schema_migrations` → `12|false`; 0 `positions_*` partitions; 0 fleets. Read-only. Pass.
+- **S2** — `make cloud-seed SEED_ARGS="--admin-email admin@cloud-smoke.example"` against Neon with `SEED_PASSWORD`: exit 0, "seeded fleet FleetOps (id 1)", 50 demo devices, 50 demo driver logins. `devices.json` `fleet_id` 1 equals `select id from fleets` → 1. Pass. (`make migrate` was NOT run against Neon.)
+- **S3** — `docker build -f deploy/cloud/Dockerfile.render -t fleetops:cloud-smoke .`: exit 0.
+- **S4** — `docker run -d --name fleetops-cloud-smoke --env-file <env> -e PORT=8000 -p 127.0.0.1:10019:8000 fleetops:cloud-smoke`: container id printed, exit 0.
+- **S5** — `SMOKE_BASE=http://127.0.0.1:10019 SMOKE_ADMIN_EMAIL=… SMOKE_PASSWORD="$SEED_PASSWORD" make cloud-smoke`: exit 0, `healthz=ok login=ok map=ok ws_position_frames=22 vehicles=50 result=PASS` (the simulator streamed through the container's exposed port; positions visible on WS `/stream`). A first attempt without `SMOKE_PASSWORD` correctly failed fast with `result=FAIL` and exit 2 (usage gate works).
+- **S6** — `docker logs fleetops-cloud-smoke` contains none of `JWT_SECRET`, `SEED_PASSWORD`, `MINIO_SECRET`, `DEVICE_KEY_SALT`, `MINIO_KEY`, `DATABASE_URL`. Pass.
+- **S7** — `docker restart fleetops-cloud-smoke`, then `/healthz` → 200 `{"status":"ok"}`. Pass.
+- **S8** — schema after: `schema_migrations` → `12|false`, identical. Partitions gained the current and next months only (`positions_2026_10`, `positions_2026_11`, `positions_2026_12` — ingest partition maintenance); no other DDL; 475 position rows landed. Pass.
+- **S9** — `docker rm -f fleetops-cloud-smoke` done; image `fleetops:cloud-smoke` kept on the host.
+
+Post-smoke: `make fmt-check lint test` on the merged `main`: first run hit one timeout flake in `TestProxyForwardsWebSocketUpgrade` (passed on isolated re-run in 0.04 s and in a full package run, per the repo flake policy); the full rerun is exit 0 with 35 packages `ok` and lint `0 issues.` Then `git push origin main` (3a2f9ca..0d42423).
