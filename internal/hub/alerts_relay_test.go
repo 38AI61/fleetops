@@ -56,7 +56,7 @@ func TestAlertRaisedReachesDispatcherNotDriver(t *testing.T) {
 	}
 
 	// The driver's first frame is its own job update, so the alert never reached it.
-	marker := `{"type":"job.updated","fleet_id":3010,"job_id":5,"driver_id":42}`
+	marker := `{"type":"job.updated","fleet_id":3010,"job_id":5,"driver_id":42,"driver_user_id":42}`
 	b.publishNATS("jobs.events.3010", marker)
 	if got := string(readMsg(t, drv)); got != marker {
 		t.Fatalf("driver's first frame %s, want its own job marker (an alert leaked)", got)

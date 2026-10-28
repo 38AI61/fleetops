@@ -283,7 +283,7 @@ func (h *Handler) deliver(c echo.Context) error {
 		return writeErr(c, err)
 	}
 	if out == Applied {
-		publishChange(h.Events, ch)
+		publishChange(ctx, h.Svc, h.Events, ch)
 	}
 	return h.writeJob(c, http.StatusOK, p.FleetID, ch.Job)
 }

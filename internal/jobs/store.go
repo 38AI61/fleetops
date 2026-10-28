@@ -102,6 +102,26 @@ type Store struct {
 	DB *sql.DB
 }
 
+// DriverUserID returns the users.id linked to driverID in fleetID, or nil when
+// the driver is unset or no user is linked (GF-341). One fleet-scoped read, so
+// the hub never needs Postgres (CLAUDE.md, ws-hub).
+func (s *Store) DriverUserID(ctx context.Context, fleetID int64, driverID *int64) (*int64, error) {
+	if driverID == nil {
+		return nil, nil
+	}
+	var id int64
+	err := s.DB.QueryRowContext(ctx,
+		`SELECT id FROM users WHERE driver_id = $1 AND fleet_id = $2 ORDER BY id LIMIT 1`,
+		*driverID, fleetID).Scan(&id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("driver user lookup: %w", err)
+	}
+	return &id, nil
+}
+
 // querier is satisfied by *sql.DB and *sql.Tx.
 type querier interface {
 	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
