@@ -19,6 +19,7 @@ import (
 	"fleetops/internal/ingest"
 	"fleetops/internal/jobs"
 	"fleetops/internal/mapview"
+	"fleetops/internal/observability"
 	"fleetops/internal/proofs"
 	"fleetops/internal/registry"
 	"fleetops/internal/reports"
@@ -62,6 +63,10 @@ func NewServer(d Deps) *echo.Echo {
 	e.HideBanner = true
 	e.Use(middleware.Recover())
 	e.Use(middleware.BodyLimitWithConfig(middleware.BodyLimitConfig{Skipper: skipDeliverBody, Limit: maxBodyBytes}))
+
+	// /metrics is unauthenticated and sits outside every JWT group (GF-329, GF-330).
+	// The api owns no fleetops series, so its registry holds only the Go and process collectors.
+	e.GET("/metrics", echo.WrapHandler(observability.Handler(observability.NewRegistry())))
 
 	store := users.NewStore(d.DB)
 	ah := &auth.Handlers{

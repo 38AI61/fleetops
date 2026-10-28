@@ -1,11 +1,15 @@
 // Command ingest drains the GPS_RAW stream into positions and runs partition
-// maintenance (P6, GF-94). It has no HTTP listener: /metrics is P22.
+// maintenance (P6, GF-94). Its only listener serves /metrics (P22, GF-330).
 package main
 
 import (
 	"context"
 	"database/sql"
+	"errors"
+	"flag"
 	"log"
+	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -13,7 +17,6 @@ import (
 
 	_ "github.com/lib/pq"
 	"github.com/nats-io/nats.go"
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/redis/go-redis/v9"
 
 	"fleetops/internal/alerts"
@@ -21,11 +24,16 @@ import (
 	"fleetops/internal/eta"
 	"fleetops/internal/fanout"
 	"fleetops/internal/ingest"
+	"fleetops/internal/observability"
 	"fleetops/internal/presence"
 	"fleetops/internal/reports"
 )
 
+// metricsAddr is the /metrics listener. It is the reserved ingest metrics port (PORTS.md, GF-330).
+var metricsAddr = flag.String("metrics-addr", "127.0.0.1:10008", "metrics listen address")
+
 func main() {
+	flag.Parse()
 	if err := run(); err != nil {
 		log.Fatalf("ingest: %v", err)
 	}
@@ -79,8 +87,28 @@ func run() error {
 		return err
 	}
 
-	// The registry is private to this process until P22 exposes it.
-	reg := prometheus.NewRegistry()
+	// One registry carries ingest, eta, reports and alerts series (GF-329).
+	reg := observability.NewRegistry()
+	metricsLn, err := net.Listen("tcp", *metricsAddr)
+	if err != nil {
+		return err
+	}
+	metricsSrv := &http.Server{Handler: metricsMux(reg), ReadHeaderTimeout: 10 * time.Second}
+	metricsDone := make(chan struct{})
+	go func() {
+		defer close(metricsDone)
+		if err := metricsSrv.Serve(metricsLn); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Printf("ingest: metrics: %v", err)
+		}
+	}()
+	defer func() {
+		shutCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = metricsSrv.Shutdown(shutCtx)
+		<-metricsDone
+	}()
+	log.Printf("ingest: metrics on %s", metricsLn.Addr())
+
 	metrics := ingest.NewMetrics(reg)
 	counters := &ingest.Counters{}
 	buf := ingest.NewBuffer(cfg.FlushInterval, cfg.FlushMax, cfg.AccuracyMaxM, counters)
