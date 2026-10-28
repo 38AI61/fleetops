@@ -34,6 +34,10 @@ func TestMetricsRegisteredNames(t *testing.T) {
 		"fleetops_ingest_partition_maintenance_errors_total": {"COUNTER", []string{"op"}, maintenanceOps},
 		"fleetops_fanout_publish_failures_total":             {"COUNTER", []string{"kind"}, fanoutKinds},
 		"fleetops_presence_transitions_total":                {"COUNTER", []string{"state"}, presenceStates},
+		"fleetops_geofence_evaluation_duration_seconds":      {"HISTOGRAM", nil, nil},
+		"fleetops_geofence_events_total":                     {"COUNTER", []string{"kind"}, geofenceKinds},
+		"fleetops_geofence_debounced_total":                  {"COUNTER", nil, nil},
+		"fleetops_geofence_evaluation_failures_total":        {"COUNTER", []string{"stage"}, geofenceStages},
 	}
 
 	got := map[string]bool{}

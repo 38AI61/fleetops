@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/lib/pq"
+
+	"fleetops/internal/geofence"
 )
 
 // qResolveDevices maps each device to its paired vehicle (GF-75).
@@ -56,6 +58,9 @@ type FlushResult struct {
 	Stored   []Message
 	Stale    int
 	Unpaired int
+	// Observed is the stored fixes in (server_ts, msg_id) order, set after commit
+	// (GF-278). The geofence hook reads it. Stale and unpaired messages are not in it.
+	Observed []geofence.Observation
 }
 
 // Writer runs the flush write path (GF-74 to GF-79). Flush is serialised by a
@@ -160,6 +165,17 @@ func (w *Writer) Flush(ctx context.Context, batch []Message, now time.Time) (Flu
 	w.counters.Stored.Add(int64(len(res.Stored)))
 	w.counters.Stale.Add(int64(res.Stale))
 	w.counters.Unpaired.Add(int64(res.Unpaired))
+	res.Observed = make([]geofence.Observation, len(ordered))
+	for i, p := range ordered {
+		res.Observed[i] = geofence.Observation{
+			VehicleID: p.vehicleID,
+			FleetID:   p.msg.FleetID,
+			MsgID:     p.msg.MsgID,
+			ServerTS:  p.msg.ServerTS,
+			Lng:       p.msg.Position.Lng,
+			Lat:       p.msg.Position.Lat,
+		}
+	}
 	return res, nil
 }
 

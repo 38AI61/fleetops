@@ -15,7 +15,12 @@ var (
 	maintenanceOps   = []string{"ensure", "retain"}
 	fanoutKinds      = []string{"position_batch", "presence"}
 	presenceStates   = []string{"online", "offline"}
+	geofenceKinds    = []string{"enter", "exit", "dwell"}
+	geofenceStages   = []string{"candidates", "state", "insert"}
 )
+
+// evalBuckets bound the geofence evaluation latency, 0.5 ms to 1 s (GF-285).
+var evalBuckets = []float64{0.0005, 0.001, 0.0025, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1}
 
 // Metrics is the ingest metric set (GF-93). Counters are incremented from Offer,
 // the flush result, and the maintenance passes, never from Counters (GF-83).
@@ -33,6 +38,10 @@ type Metrics struct {
 	PartitionMaintenanceErrors *prometheus.CounterVec
 	FanoutPublishFailures      *prometheus.CounterVec
 	PresenceTransitions        *prometheus.CounterVec
+	GeofenceEvalDuration       prometheus.Histogram
+	GeofenceEvents             *prometheus.CounterVec
+	GeofenceDebounced          prometheus.Counter
+	GeofenceEvalFailures       *prometheus.CounterVec
 }
 
 // NewMetrics builds the GF-93 set and registers it with reg. It panics on a
@@ -88,6 +97,23 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 			Name: "fleetops_presence_transitions_total",
 			Help: "Presence transitions published by state.",
 		}, []string{"state"}),
+		GeofenceEvalDuration: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Name:    "fleetops_geofence_evaluation_duration_seconds",
+			Help:    "Geofence evaluation wall time per flush that reaches the hook, success or failure.",
+			Buckets: evalBuckets,
+		}),
+		GeofenceEvents: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "fleetops_geofence_events_total",
+			Help: "Geofence events written by kind.",
+		}, []string{"kind"}),
+		GeofenceDebounced: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "fleetops_geofence_debounced_total",
+			Help: "Enter and exit candidates suppressed by the 30 s debounce.",
+		}),
+		GeofenceEvalFailures: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "fleetops_geofence_evaluation_failures_total",
+			Help: "Failed geofence evaluations by stage.",
+		}, []string{"stage"}),
 	}
 	for _, v := range outcomeValues {
 		m.MessagesTotal.WithLabelValues(v)
@@ -107,11 +133,18 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 	for _, v := range presenceStates {
 		m.PresenceTransitions.WithLabelValues(v)
 	}
+	for _, v := range geofenceKinds {
+		m.GeofenceEvents.WithLabelValues(v)
+	}
+	for _, v := range geofenceStages {
+		m.GeofenceEvalFailures.WithLabelValues(v)
+	}
 	reg.MustRegister(
 		m.MessagesTotal, m.FlushSize, m.FlushDuration, m.FlushFailures,
 		m.MissingPartition, m.Terminated, m.AckErrors,
 		m.PartitionsCreated, m.PartitionsDropped, m.PartitionMaintenanceErrors,
 		m.FanoutPublishFailures, m.PresenceTransitions,
+		m.GeofenceEvalDuration, m.GeofenceEvents, m.GeofenceDebounced, m.GeofenceEvalFailures,
 	)
 	return m
 }

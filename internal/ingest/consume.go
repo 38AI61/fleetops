@@ -15,6 +15,8 @@ import (
 	"github.com/lib/pq"
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
+
+	"fleetops/internal/geofence"
 )
 
 // ErrMalformedPayload is returned for any GF-58 payload the consumer cannot
@@ -160,6 +162,15 @@ type seams struct {
 	flushResult func(FlushResult) FlushResult
 }
 
+// GeofenceEvaluator is the flush hook (GF-278). *geofence.Evaluator satisfies it.
+type GeofenceEvaluator interface {
+	Evaluate(ctx context.Context, obs []geofence.Observation) (geofence.Result, error)
+}
+
+// geofenceBudget bounds one evaluation. It runs on its own context, so the
+// flush deadline never cancels it (GF-279).
+const geofenceBudget = time.Second
+
 // Consumer drives the GF-86 loop: fetch, parse, offer, flush, ack. One goroutine
 // owns fetch, Buffer, Writer.Flush, and every ack (GF-86, GF-87).
 type Consumer struct {
@@ -171,6 +182,8 @@ type Consumer struct {
 	pub   *Publisher
 	spec  consumerSpec
 	seams seams
+	// geo is the flush hook. It is nil only when the writer is nil.
+	geo GeofenceEvaluator
 
 	// pending holds the raw messages of the messages now in buf, in buf order.
 	pending []jetstream.Msg
@@ -178,9 +191,14 @@ type Consumer struct {
 }
 
 // NewConsumer returns a consumer with the GF-86 production spec. Every flush
-// hands its stored messages to pub after commit (GF-103).
+// hands its stored messages to pub after commit (GF-103). The geofence evaluator
+// is built on the writer's database, so the production wiring needs no extra call.
 func NewConsumer(js jetstream.JetStream, buf *Buffer, w *Writer, m *Metrics, clock Clock, pub *Publisher) *Consumer {
-	return &Consumer{js: js, buf: buf, w: w, m: m, clock: clock, pub: pub, spec: defaultConsumerSpec()}
+	c := &Consumer{js: js, buf: buf, w: w, m: m, clock: clock, pub: pub, spec: defaultConsumerSpec()}
+	if w != nil {
+		c.geo = geofence.NewEvaluator(w.db)
+	}
+	return c
 }
 
 // EnsureConsumer creates or updates the durable pull consumer with the GF-86
@@ -348,6 +366,7 @@ func (c *Consumer) flush(ctx context.Context, batch []Message, raws []jetstream.
 
 	// The batch is committed, so a published point is durable (GF-103).
 	c.pub.Publish(ctx, res.Stored)
+	c.evaluateGeofences(ctx, res.Observed)
 
 	if c.seams.beforeAck != nil {
 		c.seams.beforeAck(batch)
@@ -355,6 +374,39 @@ func (c *Consumer) flush(ctx context.Context, batch []Message, raws []jetstream.
 	for _, raw := range raws {
 		c.ackAfterCommit(raw)
 	}
+}
+
+// evaluateGeofences runs the flush hook on the fixes of one committed batch
+// (GF-278, GF-279). The evaluation runs on a context detached from the flush
+// deadline with a 1 s budget. Its error never changes the ack: the batch is
+// acked as it is after commit. Logs carry fleet ids and counts, never positions.
+func (c *Consumer) evaluateGeofences(ctx context.Context, obs []geofence.Observation) {
+	if c.geo == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), geofenceBudget)
+	defer cancel()
+	res, err := c.geo.Evaluate(ctx, obs)
+
+	c.m.GeofenceEvalDuration.Observe(res.Duration.Seconds())
+	for kind, n := range res.Emitted {
+		c.m.GeofenceEvents.WithLabelValues(string(kind)).Add(float64(n))
+	}
+	c.m.GeofenceDebounced.Add(float64(res.Debounced))
+	if res.Failed != "" {
+		c.m.GeofenceEvalFailures.WithLabelValues(string(res.Failed)).Inc()
+		log.Printf("ingest: geofence evaluation failed (%s): fixes=%d fleets=%d: %v",
+			res.Failed, len(obs), distinctFleets(obs), err)
+	}
+}
+
+// distinctFleets counts the fleets of a batch, for the failure log.
+func distinctFleets(obs []geofence.Observation) int {
+	seen := map[int64]bool{}
+	for _, o := range obs {
+		seen[o.FleetID] = true
+	}
+	return len(seen)
 }
 
 // flushReason classifies a flush error for the failure counter (GF-88, GF-90, GF-93).
