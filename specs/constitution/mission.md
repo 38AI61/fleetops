@@ -93,5 +93,15 @@ Full list in `roadmap.md` §4 (README §2.2 stretch items, §15 cloud profile, a
 | GF-247 | CI `e2e` job runs the Go services and Vite dev servers as host processes against a compose subset (postgres, redis, nats, minio; `osrm` not started); browsers installed per run | §9 (testing), §7 process | SPEC-AMEND addition | P16 |
 | D-33 (trigger timing) | geofence_events append-only trigger created in P17 (roadmap P17 scope) instead of P18 (R-7; tech-stack §11); P17 writes no rows | §2.1.6, §5; R-7 | SPEC-AMEND deviation | P17 |
 | GF-332 | prometheus and grafana compose services use host networking (`network_mode: host`) and bind 127.0.0.1 through their own flag and env (10014, 10015). The tech-stack §4 "9090→10014" mapping wording is replaced; the host port values are unchanged | §4 compose port mapping (tech-stack §4), GF-330 | SPEC-AMEND deviation | P22 |
+| GF-347 (env) | `FANOUT_MODE` env: `redis` (default) or `nats`; selects the fanout transport and presence store; validated in `config.Load` (not a `FLEETOPS_*` tunable) | §12 env list (additive); tech-stack §11 D-41 | SPEC-AMEND additive env | P24 |
+| GF-347 (REDIS_URL) | `REDIS_URL` required only when `FANOUT_MODE=redis` | §12 (names stay listed) | SPEC-AMEND deviation | P24 |
+| GF-347 (D-17) | D-17 scoped override: in `nats` mode `positions.batch.<fleet_id>` and `presence.changed.<fleet_id>` travel on core NATS, not Redis; the default mode is unchanged | §3, §4, §7 (D-17 row) | SPEC-AMEND override (cloud profile only) | P24 |
+| GF-349 | Deployment layout: merged cloud container (`deploy/cloud/Dockerfile.render`, `fleetops-cloud` supervisor, embedded NATS, one public port `PORT` default 8000, `/data` ephemeral); README §15 "in-process channels" implemented as embedded NATS core because services are separate processes | §15 table | SPEC-AMEND deviation | P24 |
+| GF-350 | MinIO binary added to the cloud container (README §15 table omits it) because the api refuses boot without MinIO (GF-201); proof photo URLs not browser-reachable in cloud | §15 table, §12, GF-201 | SPEC-AMEND deviation | P24 |
+| GF-351 | `SEED_PASSWORD` env and `--password-from-env` flag for non-interactive seeding; interactive path unchanged | §12 (additive env); GF-23 | SPEC-AMEND additive env and flag | P24 |
+| GF-353 | `WS_ORIGIN_PATTERNS` env: optional hub origin allowlist | §12 (additive env) | SPEC-AMEND additive env | P24 |
+| GF-354 | `GET /healthz` unauthenticated liveness route on the api; exempt from the role matrix (GF-329 precedent) | §6 (no health route) | SPEC-AMEND additive endpoint | P24 |
+| GF-355 | CI jobs `image` (GHCR push, `ghcr.io/38ai61/fleetops`, lowercase) and `deploy` (Render hook from secret `RENDER_DEPLOY_HOOK_URL`) on `main` only | §10 CI; GF-247 precedent | SPEC-AMEND additive infra | P24 |
+| D-41 (release) | Cloud profile released to scope in cloud mode; local compose and `redis` default unchanged | tech-stack §11 D-41 | Release (status change) | P24 |
 
 Rule: any new SPEC-AMEND gets a row here and a decision ID (D-nn from the plan, or GF-n for self-gate additions) in `tech-stack.md` §11 (D-40).
