@@ -35,8 +35,8 @@ func mustLoad(name string) *time.Location {
 //	06:08 40.004 speed 0.99 300 s, the gap cap is inclusive: moving, distance dLat 0.002
 //	06:08:30 40.005 speed 1.00  30 s, prev 0.99 < 1: idle 30, distance dLat 0.001
 //	06:09 40.006 speed 0.5  30 s, prev 1.00 is not < 1: moving, distance dLat 0.001
-//	06:19 40.007 speed 0    601 s gap: counts for neither distance nor idle
-//	06:19:30 40.007 speed 0 30 s, prev 0: idle 30, distance 0
+//	06:14:01 40.007 speed 0 301 s gap: counts for neither distance nor idle
+//	06:14:31 40.007 speed 0 30 s, prev 0: idle 30, distance 0
 //
 // Totals for v1: idle 60+60+30+30 = 180 s; distance = R * 0.006 deg (the legs
 // lie on one meridian, so their haversines add up exactly).
@@ -72,8 +72,8 @@ func seedGolden(f *fx) (fleet int64, drivers map[string]int64) {
 		p(v1, at(6, 8, 0), 40.004, 0.99),
 		p(v1, at(6, 8, 30), 40.005, 1.00),
 		p(v1, at(6, 9, 0), 40.006, 0.5),
-		p(v1, at(6, 19, 0), 40.007, 0),
-		p(v1, at(6, 19, 30), 40.007, 0),
+		p(v1, time.Date(2026, time.March, 8, 6, 14, 1, 0, time.UTC), 40.007, 0),
+		p(v1, time.Date(2026, time.March, 8, 6, 14, 31, 0, time.UTC), 40.007, 0),
 		p(v2, at(7, 0, 0), 40.000, 30),
 		p(v2, at(7, 5, 0), 40.010, 30),
 	})
