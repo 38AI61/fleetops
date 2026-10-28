@@ -5,10 +5,37 @@ package fanout
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/nats-io/nats.go"
+	"github.com/redis/go-redis/v9"
 )
+
+// Transport modes (GF-347). They match config.FanoutRedis and config.FanoutNATS.
+const (
+	ModeRedis = "redis"
+	ModeNATS  = "nats"
+)
+
+// New returns the fanout for mode (GF-347). redis needs rdb; nats needs nc.
+// The error never echoes mode, since it comes from FANOUT_MODE.
+func New(mode string, rdb *redis.Client, nc *nats.Conn) (Fanout, error) {
+	switch mode {
+	case ModeRedis:
+		if rdb == nil {
+			return nil, errors.New("redis fanout needs a client")
+		}
+		return NewRedisFanout(rdb), nil
+	case ModeNATS:
+		if nc == nil {
+			return nil, errors.New("nats fanout needs a connection")
+		}
+		return NewNATSFanout(nc), nil
+	}
+	return nil, errors.New("unknown fanout mode")
+}
 
 // Fanout publishes client-facing events. Errors are reported to the caller;
 // implementations never retry (GF-100).

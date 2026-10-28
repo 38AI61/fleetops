@@ -75,7 +75,7 @@ func TestSweepEmitsOfflineOncePerEpisode(t *testing.T) {
 	t0 := time.Date(2026, 10, 25, 12, 0, 0, 0, time.UTC)
 	device := seedPairedVehicle(t, db, rdb, fleet, t0)
 	vehicle := vehicleOf(t, db, device)
-	tr := NewTracker(rdb, fanout.NewRedisFanout(rdb), 120*time.Second)
+	tr := NewTracker(NewRedisStore(rdb), fanout.NewRedisFanout(rdb), 120*time.Second)
 	sw := NewSweeper(db, tr, nil)
 	obs := func(ts time.Time) []Observation {
 		return []Observation{{DeviceID: device, FleetID: fleet, ServerTS: ts}}
@@ -140,7 +140,7 @@ func TestSweepRaceGuardKeepsFreshDevice(t *testing.T) {
 
 	t0 := time.Date(2026, 10, 25, 12, 0, 0, 0, time.UTC)
 	device := seedPairedVehicle(t, db, rdb, fleet, t0)
-	tr := NewTracker(rdb, fanout.NewRedisFanout(rdb), 120*time.Second)
+	tr := NewTracker(NewRedisStore(rdb), fanout.NewRedisFanout(rdb), 120*time.Second)
 	if _, err := tr.Observe(ctx, []Observation{{DeviceID: device, FleetID: fleet, ServerTS: t0}}, t0); err != nil {
 		t.Fatalf("observe: %v", err)
 	}
@@ -180,7 +180,7 @@ func TestSweepBootEmitsOncePerStaleDevice(t *testing.T) {
 	b := seedPairedVehicle(t, db, rdb, fleet, t0)
 
 	// A fresh tracker has no memory: both stale devices are announced once.
-	tr := NewTracker(rdb, fanout.NewRedisFanout(rdb), 120*time.Second)
+	tr := NewTracker(NewRedisStore(rdb), fanout.NewRedisFanout(rdb), 120*time.Second)
 	sw := NewSweeper(db, tr, nil)
 	now := t0.Add(121 * time.Second)
 	res, err := sw.Sweep(ctx, now)

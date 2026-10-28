@@ -40,26 +40,43 @@ type envelope struct {
 // subscribeTimeout bounds the NATS flush that confirms the subscriptions.
 const subscribeTimeout = 5 * time.Second
 
-// Subscriptions is one hub's Redis and NATS subscriptions (GF-108).
+// Subscriptions is one hub's position, presence, job and alert subscriptions (GF-108).
 type Subscriptions struct {
 	ps    *redis.PubSub
 	nsubs []*nats.Subscription
 	done  chan struct{}
 }
 
-// Subscribe starts the Redis PSUBSCRIBE and the NATS core subscriptions. Both
-// libraries reconnect on their own. Messages published during a gap are lost:
-// the hub keeps no state (GF-4, GF-108).
-func (h *Hub) Subscribe(ctx context.Context, rdb *redis.Client, nc *nats.Conn) (*Subscriptions, error) {
-	ps := rdb.PSubscribe(ctx, posBatchPrefix+"*", presencePrefix+"*")
+// Transport is where positions and presence come from (GF-347). Redis PSUBSCRIBE
+// is the default; core NATS is the cloud profile. Job and alert events always
+// come from core NATS.
+type Transport interface {
+	subscribe(ctx context.Context, h *Hub, s *Subscriptions) error
+}
+
+// redisTransport PSUBSCRIBEs to the position and presence channels (GF-108).
+type redisTransport struct {
+	rdb *redis.Client
+}
+
+// NewRedisTransport wraps an open client. The caller owns its lifetime.
+func NewRedisTransport(rdb *redis.Client) Transport {
+	return redisTransport{rdb: rdb}
+}
+
+// subscribe PSUBSCRIBEs and starts the reader. Both libraries reconnect on their
+// own; messages published during a gap are lost (GF-4).
+func (t redisTransport) subscribe(ctx context.Context, h *Hub, s *Subscriptions) error {
+	ps := t.rdb.PSubscribe(ctx, posBatchPrefix+"*", presencePrefix+"*")
 	// Two confirmations, one per pattern, before the channel takes over reading.
 	for range 2 {
 		if _, err := ps.Receive(ctx); err != nil {
 			_ = ps.Close()
-			return nil, fmt.Errorf("redis psubscribe: %w", err)
+			return fmt.Errorf("redis psubscribe: %w", err)
 		}
 	}
-	s := &Subscriptions{ps: ps, done: make(chan struct{})}
+	s.ps = ps
+	s.done = make(chan struct{})
 	msgs := ps.Channel()
 	go func() {
 		defer close(s.done)
@@ -67,6 +84,42 @@ func (h *Hub) Subscribe(ctx context.Context, rdb *redis.Client, nc *nats.Conn) (
 			h.relayRedis(msg.Channel, []byte(msg.Payload))
 		}
 	}()
+	return nil
+}
+
+// natsTransport subscribes to positions and presence on core NATS (GF-347). The
+// hub then needs no Redis client; a Redis touch here would be a bug.
+type natsTransport struct {
+	nc *nats.Conn
+}
+
+// NewNATSTransport wraps an open connection. The caller owns its lifetime.
+func NewNATSTransport(nc *nats.Conn) Transport {
+	return natsTransport{nc: nc}
+}
+
+// subscribe registers core subscriptions and relays through relayNATS.
+func (t natsTransport) subscribe(_ context.Context, h *Hub, s *Subscriptions) error {
+	for _, subject := range []string{posBatchPrefix + "*", presencePrefix + "*"} {
+		sub, err := t.nc.Subscribe(subject, func(m *nats.Msg) {
+			h.relayNATS(m.Subject, m.Data)
+		})
+		if err != nil {
+			return fmt.Errorf("nats subscribe %s: %w", subject, err)
+		}
+		s.nsubs = append(s.nsubs, sub)
+	}
+	return nil
+}
+
+// Subscribe starts the transport's subscriptions and the NATS core subscriptions
+// for jobs and alerts, then flushes so they are live before it returns (GF-108).
+func (h *Hub) Subscribe(ctx context.Context, tr Transport, nc *nats.Conn) (*Subscriptions, error) {
+	s := &Subscriptions{}
+	if err := tr.subscribe(ctx, h, s); err != nil {
+		_ = s.Close()
+		return nil, err
+	}
 
 	// Core NATS, not queue groups: every hub instance sees every event (GF-108).
 	for _, subject := range []string{jobsPrefix + "*", "alerts.*"} {
@@ -88,10 +141,14 @@ func (h *Hub) Subscribe(ctx context.Context, rdb *redis.Client, nc *nats.Conn) (
 	return s, nil
 }
 
-// Close unsubscribes NATS, closes the PubSub, and waits for the Redis reader.
+// Close unsubscribes NATS, closes the PubSub if there is one, and waits for the
+// Redis reader.
 func (s *Subscriptions) Close() error {
 	for _, sub := range s.nsubs {
 		_ = sub.Unsubscribe()
+	}
+	if s.ps == nil {
+		return nil
 	}
 	err := s.ps.Close()
 	<-s.done
@@ -122,7 +179,8 @@ func (h *Hub) relayRedis(channel string, body []byte) {
 	h.broadcast(fleet, body, notDriver)
 }
 
-// relayNATS forwards one NATS message to its fleet room (GF-108, GF-109, GF-116).
+// relayNATS forwards one NATS message to its fleet room (GF-108, GF-109, GF-116,
+// GF-347). Position and presence subjects are relayed like their Redis channels.
 func (h *Hub) relayNATS(subject string, body []byte) {
 	var family string
 	var suffix string
@@ -131,6 +189,10 @@ func (h *Hub) relayNATS(subject string, body []byte) {
 		family, suffix = typeJobUpdated, subject[len(jobsPrefix):]
 	case strings.HasPrefix(subject, alertsPrefix):
 		family, suffix = typeAlertRaised, subject[len(alertsPrefix):]
+	case strings.HasPrefix(subject, posBatchPrefix):
+		family, suffix = typePositionBatch, subject[len(posBatchPrefix):]
+	case strings.HasPrefix(subject, presencePrefix):
+		family, suffix = typePresence, subject[len(presencePrefix):]
 	default:
 		return
 	}

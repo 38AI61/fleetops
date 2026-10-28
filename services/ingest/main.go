@@ -67,17 +67,23 @@ func run() error {
 	}
 
 	// Redis is pinged at boot so a bad REDIS_URL fails fast (GF-103 covers runtime).
-	ropts, err := redis.ParseURL(cfg.RedisURL)
-	if err != nil {
-		return err
-	}
-	rdb := redis.NewClient(ropts)
-	defer func() { _ = rdb.Close() }()
-	pingCtx, cancelPing := context.WithTimeout(context.Background(), 5*time.Second)
-	err = rdb.Ping(pingCtx).Err()
-	cancelPing()
-	if err != nil {
-		return err
+	// nats mode skips Redis and keeps presence in memory (GF-347).
+	var rdb *redis.Client
+	var store presence.Store = presence.NewMemoryStore(time.Now)
+	if cfg.FanoutMode == config.FanoutRedis {
+		ropts, err := redis.ParseURL(cfg.RedisURL)
+		if err != nil {
+			return err
+		}
+		rdb = redis.NewClient(ropts)
+		defer func() { _ = rdb.Close() }()
+		pingCtx, cancelPing := context.WithTimeout(context.Background(), 5*time.Second)
+		err = rdb.Ping(pingCtx).Err()
+		cancelPing()
+		if err != nil {
+			return err
+		}
+		store = presence.NewRedisStore(rdb)
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -114,8 +120,11 @@ func run() error {
 	buf := ingest.NewBuffer(cfg.FlushInterval, cfg.FlushMax, cfg.AccuracyMaxM, counters)
 	writer := ingest.NewWriter(db, counters)
 
-	fan := fanout.NewRedisFanout(rdb)
-	tracker := presence.NewTracker(rdb, fan, cfg.PresenceTTL)
+	fan, err := fanout.New(cfg.FanoutMode, rdb, nc)
+	if err != nil {
+		return err
+	}
+	tracker := presence.NewTracker(store, fan, cfg.PresenceTTL)
 	pub := &ingest.Publisher{Fanout: fan, Tracker: tracker, Metrics: metrics}
 
 	// The sweeper stops and is joined before Redis closes (GF-118).

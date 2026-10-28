@@ -159,7 +159,7 @@ func newPipeline(t *testing.T) *pipeline {
 	}
 
 	fan := fanout.NewRedisFanout(rdb)
-	p.tracker = presence.NewTracker(rdb, fan, 120*time.Second)
+	p.tracker = presence.NewTracker(presence.NewRedisStore(rdb), fan, 120*time.Second)
 	metrics := ingest.NewMetrics(prometheus.NewRegistry())
 	counters := &ingest.Counters{}
 	buf := ingest.NewBuffer(time.Second, 500, 50, counters)

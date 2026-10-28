@@ -34,6 +34,27 @@ const (
 	redisPingTimeout    = 5 * time.Second
 )
 
+// transport picks the position source for FANOUT_MODE (GF-347). nats mode never
+// touches Redis. redis mode connects and pings at boot, as before.
+func transport(ctx context.Context, cfg config.Config, nc *nats.Conn) (hub.Transport, func(), error) {
+	if cfg.FanoutMode == config.FanoutNATS {
+		return hub.NewNATSTransport(nc), func() {}, nil
+	}
+	ropts, err := redis.ParseURL(cfg.RedisURL)
+	if err != nil {
+		return nil, nil, err
+	}
+	rdb := redis.NewClient(ropts)
+	pingCtx, cancelPing := context.WithTimeout(ctx, redisPingTimeout)
+	err = rdb.Ping(pingCtx).Err()
+	cancelPing()
+	if err != nil {
+		_ = rdb.Close()
+		return nil, nil, err
+	}
+	return hub.NewRedisTransport(rdb), func() { _ = rdb.Close() }, nil
+}
+
 func main() {
 	flag.Parse()
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -60,18 +81,11 @@ func run(ctx context.Context) error {
 	}
 	defer nc.Close()
 
-	ropts, err := redis.ParseURL(cfg.RedisURL)
+	tr, closeTr, err := transport(ctx, cfg, nc)
 	if err != nil {
 		return err
 	}
-	rdb := redis.NewClient(ropts)
-	defer func() { _ = rdb.Close() }()
-	pingCtx, cancelPing := context.WithTimeout(ctx, redisPingTimeout)
-	err = rdb.Ping(pingCtx).Err()
-	cancelPing()
-	if err != nil {
-		return err
-	}
+	defer closeTr()
 
 	issuer, err := auth.NewIssuer([]byte(cfg.JWTSecret), time.Now)
 	if err != nil {
@@ -83,7 +97,7 @@ func run(ctx context.Context) error {
 	defer cancelBase()
 	h := hub.New(base, hub.Options{RoomCap: cfg.WSRoomCap, Verifier: issuer})
 
-	subs, err := h.Subscribe(ctx, rdb, nc)
+	subs, err := h.Subscribe(ctx, tr, nc)
 	if err != nil {
 		return err
 	}
