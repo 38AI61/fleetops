@@ -14,6 +14,7 @@ import (
 
 	"fleetops/internal/auth"
 	"fleetops/internal/dispatch"
+	"fleetops/internal/geofence"
 	"fleetops/internal/ingest"
 	"fleetops/internal/jobs"
 	"fleetops/internal/mapview"
@@ -94,6 +95,9 @@ func NewServer(d Deps) *echo.Echo {
 
 	dh := &dispatch.Handler{Store: &dispatch.Store{DB: d.DB}}
 	dh.Register(e, auth.RequireAuth(d.Issuer))
+
+	gh := &geofence.Handler{Store: &geofence.Store{DB: d.DB}}
+	gh.Register(e, auth.RequireAuth(d.Issuer))
 
 	// Device route: no JWT group (GF-64). The device key is checked inside the handler.
 	ih := &ingest.Handler{DB: d.DB, Salt: d.DeviceKeySalt, Clock: d.Clock, Gate: d.Gate, JS: d.NATS}

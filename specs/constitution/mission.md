@@ -91,5 +91,6 @@ Full list in `roadmap.md` §4 (README §2.2 stretch items, §15 cloud profile, a
 | GF-3 | `POST /devices/:id/rotate` and `POST /devices/:id/revoke` (paths chosen here; plan named the operations only) | §8 | SPEC-AMEND additive endpoints | P3 |
 | GF-12 | Test and CI PostGIS image tag `postgis/postgis:16-3.4` (`testinfra.PostgisImage`); README §12 and compose keep `16` (not a published tag) until compose is touched in P4 | §12 | SPEC-AMEND image tag correction | P1 |
 | GF-247 | CI `e2e` job runs the Go services and Vite dev servers as host processes against a compose subset (postgres, redis, nats, minio; `osrm` not started); browsers installed per run | §9 (testing), §7 process | SPEC-AMEND addition | P16 |
+| D-33 (trigger timing) | geofence_events append-only trigger created in P17 (roadmap P17 scope) instead of P18 (R-7; tech-stack §11); P17 writes no rows | §2.1.6, §5; R-7 | SPEC-AMEND deviation | P17 |
 
 Rule: any new SPEC-AMEND gets a row here and a decision ID (D-nn from the plan, or GF-n for self-gate additions) in `tech-stack.md` §11 (D-40).
