@@ -298,7 +298,7 @@ func (h *Handler) assign(c echo.Context) error {
 		return writeErr(c, err)
 	}
 	if out == Applied {
-		publishChange(h.Events, ch)
+		publishChange(ctx, h.Svc, h.Events, ch)
 	}
 	return h.writeJob(c, http.StatusOK, p.FleetID, ch.Job)
 }
@@ -321,7 +321,7 @@ func (h *Handler) cancel(c echo.Context) error {
 		return writeErr(c, err)
 	}
 	if out == Applied {
-		publishChange(h.Events, ch)
+		publishChange(c.Request().Context(), h.Svc, h.Events, ch)
 	}
 	return h.writeJob(c, http.StatusOK, p.FleetID, ch.Job)
 }
@@ -386,7 +386,7 @@ func (h *Handler) driverMove(to State) echo.HandlerFunc {
 			return writeErr(c, err)
 		}
 		if out == Applied {
-			publishChange(h.Events, ch)
+			publishChange(c.Request().Context(), h.Svc, h.Events, ch)
 		}
 		return h.writeJob(c, http.StatusOK, p.FleetID, ch.Job)
 	}

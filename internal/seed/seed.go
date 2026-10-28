@@ -32,7 +32,8 @@ var ErrUsage = errors.New("usage")
 // Options are the seed inputs. Timezone is an IANA name such as "UTC".
 // DemoDevices adds the demo vehicles and tracker devices on first seed only
 // (GF-135). It needs DeviceKeySalt of at least config.MinDeviceKeySaltBytes.
-// DevicesPath defaults to devicesfile.DefaultPath.
+// DevicesPath defaults to devicesfile.DefaultPath. DemoUsersPath defaults to
+// DemoUsersDefaultPath and receives the demo driver logins (GF-339).
 type Options struct {
 	AdminEmail    string
 	FleetName     string
@@ -40,6 +41,7 @@ type Options struct {
 	DemoDevices   bool
 	DeviceKeySalt []byte
 	DevicesPath   string
+	DemoUsersPath string
 }
 
 // PasswordSource returns the admin password. It is called only when a seed is
@@ -76,6 +78,10 @@ func Validate(opts Options) (Options, error) {
 	if path == "" {
 		path = devicesfile.DefaultPath
 	}
+	usersPath := opts.DemoUsersPath
+	if usersPath == "" {
+		usersPath = DemoUsersDefaultPath
+	}
 	return Options{
 		AdminEmail:    users.NormalizeEmail(email),
 		FleetName:     name,
@@ -83,6 +89,7 @@ func Validate(opts Options) (Options, error) {
 		DemoDevices:   opts.DemoDevices,
 		DeviceKeySalt: opts.DeviceKeySalt,
 		DevicesPath:   path,
+		DemoUsersPath: usersPath,
 	}, nil
 }
 
@@ -159,7 +166,7 @@ func Run(ctx context.Context, db *sql.DB, opts Options, pw PasswordSource) (Resu
 	res := Result{Created: true, FleetID: fleetID, UserID: admin.ID}
 	if opts.DemoDevices {
 		// Demo devices run only in this branch, after the fleet commits (GF-135).
-		if err := RunDemo(ctx, db, res, opts.DeviceKeySalt, opts.DevicesPath, time.Now); err != nil {
+		if err := RunDemo(ctx, db, res, opts.DeviceKeySalt, opts.DevicesPath, opts.DemoUsersPath, time.Now); err != nil {
 			return res, err
 		}
 	}

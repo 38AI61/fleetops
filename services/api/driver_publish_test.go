@@ -76,8 +76,8 @@ func TestDriverJobsPublish(t *testing.T) {
 
 	move(tok, job, "accept", ``)
 	ev := next("accept")
-	if len(ev) != 7 {
-		t.Fatalf("accept body has %d fields, want exactly 7: %v", len(ev), ev)
+	if len(ev) != 8 {
+		t.Fatalf("accept body has %d fields, want exactly 8 (driver_user_id, GF-341): %v", len(ev), ev)
 	}
 	if ev["type"] != "job.updated" || ev["from_state"] != "assigned" || ev["to_state"] != "accepted" {
 		t.Fatalf("accept body = %v", ev)
@@ -108,8 +108,8 @@ func TestDriverJobsPublish(t *testing.T) {
 	if ev["from_state"] != "picked_up" || ev["to_state"] != "failed" || ev["driver_id"] != float64(d) {
 		t.Fatalf("fail body = %v", ev)
 	}
-	if len(ev) != 7 {
-		t.Fatalf("fail body has %d fields, want exactly 7 (no reason on the wire): %v", len(ev), ev)
+	if len(ev) != 8 {
+		t.Fatalf("fail body has %d fields, want exactly 8 (no reason on the wire): %v", len(ev), ev)
 	}
 	move(tok, job, "fail", `{"reason":"second"}`)
 	silent("replay fail")

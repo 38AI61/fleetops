@@ -31,9 +31,10 @@ const (
 // envelope is the part of each relayed body the hub reads. The body itself is
 // forwarded verbatim (GF-101, GF-117).
 type envelope struct {
-	Type     string `json:"type"`
-	FleetID  int64  `json:"fleet_id"`
-	DriverID *int64 `json:"driver_id"`
+	Type         string `json:"type"`
+	FleetID      int64  `json:"fleet_id"`
+	DriverID     *int64 `json:"driver_id"`
+	DriverUserID *int64 `json:"driver_user_id"`
 }
 
 // subscribeTimeout bounds the NATS flush that confirms the subscriptions.
@@ -148,7 +149,7 @@ func (h *Hub) relayNATS(subject string, body []byte) {
 		h.counters.DroppedEnvelope.Add(1)
 		return
 	}
-	h.broadcast(fleet, body, jobFor(*env.DriverID))
+	h.broadcast(fleet, body, jobFor(env.DriverUserID))
 }
 
 // envelopeMatches reports whether body is the family's type and carries fleet.
@@ -170,9 +171,13 @@ func notDriver(c *conn) bool {
 	return c.role != "driver"
 }
 
-// jobFor admits non-drivers, and a driver only for their own job updates.
-func jobFor(driverID int64) func(*conn) bool {
+// jobFor admits non-drivers, and a driver only when driver_user_id is the
+// connection's users.id (GF-192, GF-341). A null driver_user_id reaches no driver.
+func jobFor(driverUserID *int64) func(*conn) bool {
 	return func(c *conn) bool {
-		return c.role != "driver" || c.subject == driverID
+		if c.role != "driver" {
+			return true
+		}
+		return driverUserID != nil && c.subject == *driverUserID
 	}
 }

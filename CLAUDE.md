@@ -40,7 +40,13 @@ Run from the repo root. `make help` lists every target.
   - Roll back one step: `make migrate MIGRATE_ARGS="down 1"`
   - Recover from a dirty version: fix the schema by hand, then `make migrate MIGRATE_ARGS="force <version>"`
 - `make seed` — bootstrap the first fleet and admin (D-05). Run `SEED_ARGS="--admin-email <email>" make seed`; add ` --demo-devices` on the first seed only to also create 50 demo vehicles with tracker devices and write `deploy/.local/devices.json` (the flag needs `DEVICE_KEY_SALT`, at least 32 bytes). The password comes from a TTY prompt or one line on stdin, never a flag. Exit 0 when already seeded (no prompt); exit 2 on usage errors.
-- `make seed-demo` — stub; exits 1 until P23
+- `make seed-demo` — `make seed --demo-devices`: first seed only, exit 0 on a seeded DB. Also writes `deploy/.local/demo-users.json` (0600, 50 driver logins).
+
+## Load and demo (P23)
+
+- `make loadtest` runs the five k6 scenarios in order (`loadtest-ws|assign|report|ingest-steady|ingest-burst`). It needs `K6` on PATH (overridable in `deploy/.local/tools.mk`) and `TOKEN` (admin JWT). Summaries go to `deploy/.local/loadtest/`. `make loadtest-static` checks the scripts without k6.
+- `make hub-scale` runs 10k synthetic WS connections under `-race` (`SCALE_CONNS` overrides).
+- Demo walkthrough and nightly line: `docs/demo.md`.
 
 ## Tooling
 

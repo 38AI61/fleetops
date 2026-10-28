@@ -19,11 +19,13 @@ import (
 // demoSalt is 32 bytes of test data, the minimum (GF-30). It is never a real secret.
 var demoSalt = []byte(strings.Repeat("d", 32))
 
+// demoOpts puts demo-users.json next to devices.json so tests never write under the package.
 func demoOpts(path string) seed.Options {
 	o := validOpts()
 	o.DemoDevices = true
 	o.DeviceKeySalt = demoSalt
 	o.DevicesPath = path
+	o.DemoUsersPath = filepath.Join(filepath.Dir(path), "demo-users.json")
 	return o
 }
 

@@ -155,11 +155,11 @@ func TestHubDriverReceivesOnlyOwnJobUpdated(t *testing.T) {
 	readAuthOK(t, dispatcher, 3006, "dispatcher")
 	joined(t, r, 2)
 
-	jobOther := `{"type":"job.updated","fleet_id":3006,"job_id":1,"driver_id":43}`
-	jobOwn := `{"type":"job.updated","fleet_id":3006,"job_id":2,"driver_id":42}`
+	jobOther := `{"type":"job.updated","fleet_id":3006,"job_id":1,"driver_id":43,"driver_user_id":43}`
+	jobOwn := `{"type":"job.updated","fleet_id":3006,"job_id":2,"driver_id":42,"driver_user_id":42}`
 	presence := `{"type":"presence.changed","fleet_id":3006,"device_id":7,"state":"online","ts":"2026-10-25T10:00:00Z"}`
 	alert := `{"type":"alert.raised","fleet_id":3006,"alert_id":3,"severity":"low"}`
-	end := `{"type":"job.updated","fleet_id":3006,"job_id":99,"driver_id":42}`
+	end := `{"type":"job.updated","fleet_id":3006,"job_id":99,"driver_id":42,"driver_user_id":42}`
 
 	b.publishNATS("jobs.events.3006", jobOther)
 	b.publishRedis("presence.changed.3006", presence)
