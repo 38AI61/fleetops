@@ -1,6 +1,6 @@
 # Feature 18 — Geofence evaluator (P18)
 
-Status: planned 2026-10-28 on `phase-18-geofence-evaluator` (G0–G5). Nothing implemented yet. Validation results and deviations are appended at the end when the phase runs.
+Status: implemented 2026-10-28 on `phase-18-geofence-evaluator` (G0–G5). Validation results and deviations are appended at the end.
 Source plan: `/root/.claude/plans/p18-plan-rustling-moonbeam.md` (approved).
 
 Target file: `specs/features/18-geofence-evaluator.md`. Decisions GF-278…GF-289. Highest existing decision is GF-277.
@@ -170,3 +170,40 @@ The GF-192 hub identity binding remains open and belongs to P23.
 - Schedule evaluation (P19).
 - Merge to main, push.
 - Any P19+ content.
+
+## Validation results and deviations
+
+Run 2026-10-28 on `phase-18-geofence-evaluator` after G4 (commits `64b85b5`, `bc064fa`, `135a95b`, `fb0c2db`), with the G5 lint fix `f554f14`.
+
+**G0 baseline (untouched branch, before any P18 code).** `make fmt-check` exit 0. `make lint` exit 0, 0 issues. `make test` exit 0 with every package `ok` (including `internal/hub` on its first run, so no flake retry). Migrations: 20 files, 001–010 up and down, highest `010`. `010_geofences_events.up.sql` admits `kind IN ('enter','exit','dwell')`. `geofences.geom` holds the circle centre with `radius_m` (`store.go:64–75`). Flush call sites: `consume.go` `flushWithTimeout` (from `cycle` on a full batch and on the interval tick) and `shutdown`, which calls `flush` directly. `defaultConsumerSpec`: `ackWait` 30 s, `flushTimeout` 5 s. Web and driver-pwa `npm test` were run at G5 on the same tree (apps untouched, so identical to baseline): both exit 0.
+
+**Validation checks.**
+
+- (a) Gates. `make fmt-check` exit 0. `make lint` exit 0, 0 issues (after one fix: gosec G115 in the debounce test, commit `f554f14`). `make test` exit 0, 25 `ok` packages, no FAIL, including `internal/geofence` and `internal/ingest`.
+- (b) Scope fence. `git diff --name-only main...HEAD` lists only `CLAUDE.md`, `internal/geofence/*`, `internal/ingest/{consume,metrics,metrics_test,writer}.go`, `internal/ingest/geofence_hook_test.go`, `prompts/58–60-p18-*.md`, and `specs/features/18-geofence-evaluator.md`. No migration, no mission row, no README, no `services/`.
+- (c) No secrets. Code paths (`internal/ services/ tools/ db/ CLAUDE.md`): the pattern prints nothing. The literal grep over the full diff matches two lines of spec and prompt text that quote the check itself. Those lines are documentation, not credentials.
+- (d) Frozen trees. `git diff --name-only main...HEAD -- e2e/ apps/ README.md deploy/ services/api/` prints nothing.
+- (e) `CLAUDE.md` is 187 lines (under 200). The evaluator block is 8 lines (heading and 7 bullets, at most 12).
+- (f) Property determinism. `go test ./internal/geofence -run Debounce -race -count=1` passed twice in a row: `ok`, and rapid "passed 100 tests" each run, with a fresh seed each run. Extra runs: `-rapid.checks=1000` passed. A mutation check (debounce window disabled in `state.go`, then reverted) made the property and the jitter stream fail, so the test detects the bug it targets.
+- (g) P19 boundary. `git diff main...HEAD -- internal/ | grep '^+' | grep -E 'Notifier|alert_rules|alerts\.|/ack|PATCH|geofence_exit_outside_schedule'` prints nothing.
+- (h) Metric registration. `TestMetricsRegisteredNames` (extended with the four names) and `TestGeofenceMetricsSeriesPreCreated` pass. All four names are present with label values pre-created.
+- (i) Ack timing. `ackWait` 30 s exceeds the flush deadline (5 s) plus the 1 s evaluation budget (6 s). Pass.
+- (j) Apps baseline. `git diff --name-only main...HEAD -- apps/` is empty, so the apps tests were not required to re-run. They were run anyway: `apps/web` and `apps/driver-pwa` `npm test` both exit 0.
+
+**Check outcomes of the named tests.** Candidate SQL: bbox miss, boundary (vertex and meridian midpoints inside), circle at radius d−1 and d+1, and fleet scope all pass. `EXPLAIN` (seqscan off) shows `geofences_bbox_gix` for the candidate statement and `geofence_events_fleet_at_idx` for the rebuild, so the GF-280 stop rule was not triggered. Circle superset property: 100 rapid checks pass. Rebuild: restart inside the lookback gives no duplicate enter. An enter older than 24 h yields one new enter (the accepted residual). Flush-hook integration: crossing (1 enter, 1 exit), jitter (1 event, 3 debounced), dwell at exactly `dwell_min` only, mismatch (hook not called), replay of a stale batch (zero events), and the failure path through real NATS (batch acked, positions stored, failure counted, next batch emits the enter) all pass.
+
+**Deviations and interpretations.**
+
+1. `specs/constitution/constitution.md` (named in the brief) does not exist. The constitution is `mission.md`, `roadmap.md`, and `tech-stack.md`. R-1 to R-9 were read from `roadmap.md` §1.
+2. The source plan `/root/.claude/plans/p18-plan-rustling-moonbeam.md` (cited in the spec header) is not present. The approved feature spec was used as the sole source.
+3. Production wiring. The evaluator is built inside `NewConsumer` from the writer's DB (`consume.go`), and `services/ingest/main.go` is unchanged. The scope fence (b) excludes `services/`. The seam is `Consumer.geo`, which tests replace.
+4. Candidate rows. The candidate query returns every bbox hit with its exact `inside` flag, not only rows where `inside` holds. A fence with no row for a fix is outside that fix. This is how I read "hits only" in GF-284.
+5. `last_obs_at` is maintained only for pairs the evaluator visits (a bbox hit, or a fence the vehicle is currently inside). A fix that is outside and touches no tracked pair does not advance `last_obs_at`. So a later older inside fix for that pair is not ignored by the out-of-order rule. This is narrower than GF-281 says. It only matters for out-of-order fixes across flushes. Accepted for bounded per-flush cost; not measured.
+6. Debounce count. `fleetops_geofence_debounced_total` counts suppressed enter and exit candidates only. Dwell waiting for the debounce window is not counted.
+7. The circle superset test (`TestCircleBBoxSupersetProperty`) is database-backed. Its truth is PostGIS `ST_DWithin` on the spheroid, rather than a pure-Go formula. It sits in the `internal/geofence` package, as the Unit row required.
+8. The duration histogram is observed on every successful flush that reaches the hook, including flushes with no observations (the evaluator returns immediately on empty input). This follows GF-285's wording.
+9. Pair state is kept in memory for every pair ever visited, with no eviction. The spec does not address this. Growth is bounded by vehicles times fences touched. Noted for P22 or later.
+10. Test fixtures. Several plan-level tests use `PREPARE` plus `EXPLAIN EXECUTE`, not literal substitution, so the real plan is tested with the real parameter types.
+
+**Manual checks.** None are part of this phase.
+
