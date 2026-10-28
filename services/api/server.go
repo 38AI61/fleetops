@@ -11,6 +11,7 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	"github.com/nats-io/nats.go/jetstream"
+	"go.opentelemetry.io/otel/trace"
 
 	"fleetops/internal/alerts"
 	"fleetops/internal/auth"
@@ -44,6 +45,7 @@ func skipDeliverBody(c echo.Context) bool {
 // PresenceTTL is the map offline threshold (FLEETOPS_PRESENCE_TTL, GF-132).
 // Events publishes jobs.events after each applied job transition (GF-179).
 // Proofs stores delivery photos (P12, GF-201). Nil leaves deliver answering 503.
+// Tracer starts the jobs.assign span (P22, GF-335). Nil uses the global tracer.
 type Deps struct {
 	DB            *sql.DB
 	Issuer        *auth.Issuer
@@ -55,6 +57,7 @@ type Deps struct {
 	PresenceTTL   time.Duration
 	Events        jobs.Publisher
 	Proofs        *proofs.Store
+	Tracer        trace.Tracer
 }
 
 // NewServer returns the API with every P2 through P12 route mounted.
@@ -89,7 +92,7 @@ func NewServer(d Deps) *echo.Echo {
 	rh := &registry.Handler{Svc: &registry.Service{DB: d.DB, Salt: d.DeviceKeySalt, Clock: d.Clock}}
 	rh.Register(e, auth.RequireAuth(d.Issuer))
 
-	jh := &jobs.Handler{Svc: &jobs.Store{DB: d.DB}, Events: d.Events, Now: d.Clock}
+	jh := &jobs.Handler{Svc: &jobs.Store{DB: d.DB}, Events: d.Events, Now: d.Clock, Tracer: d.Tracer}
 	// Assign the interface only when the store exists: a nil *proofs.Store in an
 	// interface is not nil (GF-201).
 	if d.Proofs != nil {

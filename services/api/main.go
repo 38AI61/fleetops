@@ -14,10 +14,12 @@ import (
 
 	_ "github.com/lib/pq"
 	"github.com/nats-io/nats.go"
+	"go.opentelemetry.io/otel"
 
 	"fleetops/internal/auth"
 	"fleetops/internal/config"
 	"fleetops/internal/ingest"
+	"fleetops/internal/observability"
 	"fleetops/internal/proofs"
 )
 
@@ -67,6 +69,17 @@ func main() {
 		log.Fatalf("api: ensure %s bucket: %v", proofs.Bucket, err)
 	}
 
+	// OTLP tracing is a no-op unless OTEL_EXPORTER_OTLP_ENDPOINT is set (D-36, GF-334).
+	shutdownTracing, err := observability.InitTracing(context.Background(), os.LookupEnv, "fleetops-api")
+	if err != nil {
+		log.Fatalf("api: tracing: %v", err)
+	}
+	defer func() {
+		shutCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = shutdownTracing(shutCtx)
+	}()
+
 	e := NewServer(Deps{
 		DB:            db,
 		Issuer:        issuer,
@@ -78,6 +91,7 @@ func main() {
 		PresenceTTL:   cfg.PresenceTTL,
 		Events:        nc,
 		Proofs:        proofStore,
+		Tracer:        otel.Tracer("fleetops/jobs"),
 	})
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

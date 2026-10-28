@@ -13,6 +13,7 @@ import (
 
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
+	"go.opentelemetry.io/otel/trace"
 
 	"fleetops/internal/auth"
 	"fleetops/internal/config"
@@ -58,6 +59,12 @@ func startServer(t *testing.T) *harness {
 // events publisher means the harness's own core NATS connection.
 func startServerEvents(t *testing.T, events jobs.Publisher) *harness {
 	t.Helper()
+	return startServerOpts(t, events, nil)
+}
+
+// startServerOpts is startServerEvents with a chosen assign tracer. A nil tracer means the global one.
+func startServerOpts(t *testing.T, events jobs.Publisher, tracer trace.Tracer) *harness {
+	t.Helper()
 	db := testinfra.NewMigratedDB(t)
 	nc, err := nats.Connect(testinfra.NATSURL(t))
 	if err != nil {
@@ -88,6 +95,7 @@ func startServerEvents(t *testing.T, events jobs.Publisher) *harness {
 		PresenceTTL:   config.DefaultPresenceTTL,
 		Events:        events,
 		Proofs:        prooftest.SharedStore(t),
+		Tracer:        tracer,
 	})
 
 	ln, err := net.Listen("tcp", "127.0.0.1:0")

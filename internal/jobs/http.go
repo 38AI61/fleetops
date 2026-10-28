@@ -13,6 +13,10 @@ import (
 
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 
 	"fleetops/internal/apierr"
 	"fleetops/internal/auth"
@@ -43,6 +47,16 @@ type Handler struct {
 	Now    func() time.Time
 	// Proofs stores delivery photos (P12). Nil means deliver answers 503 (GF-201).
 	Proofs ProofStore
+	// Tracer starts the jobs.assign span (P22, GF-335). Nil means otel.Tracer("fleetops/jobs").
+	Tracer trace.Tracer
+}
+
+// tracer is the configured tracer, or the global one when none is set.
+func (h *Handler) tracer() trace.Tracer {
+	if h.Tracer != nil {
+		return h.Tracer
+	}
+	return otel.Tracer("fleetops/jobs")
 }
 
 // Register mounts the job routes. authn is auth.RequireAuth for the
@@ -274,8 +288,13 @@ func (h *Handler) assign(c echo.Context) error {
 	if !ok {
 		return apierr.Write(c, http.StatusNotFound, apierr.NotFound)
 	}
-	ch, out, err := h.Svc.Assign(c.Request().Context(), p.UserID, p.FleetID, id, *in.VehicleID, *in.DriverID)
+	// One span per assign, ended after publishChange (GF-335). The store has no span of its own.
+	ctx, span := h.tracer().Start(c.Request().Context(), "jobs.assign", trace.WithAttributes(attribute.Int64("job.id", id)))
+	defer span.End()
+	ch, out, err := h.Svc.Assign(ctx, p.UserID, p.FleetID, id, *in.VehicleID, *in.DriverID)
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return writeErr(c, err)
 	}
 	if out == Applied {
