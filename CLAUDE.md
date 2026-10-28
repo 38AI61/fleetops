@@ -24,10 +24,7 @@ Full allocation and reserved ports: `deploy/PORTS.md`. All host ports are in 100
 
 Compose file: `deploy/docker-compose.yml`
 
-```
-docker compose -f deploy/docker-compose.yml up -d
-docker compose -f deploy/docker-compose.yml down
-```
+Up: `docker compose -f deploy/docker-compose.yml up -d`; down: `docker compose -f deploy/docker-compose.yml down`.
 
 The `nats` service runs with `-js` (JetStream, GF-62).
 
@@ -66,18 +63,7 @@ Run from the repo root. `make help` lists every target.
 
 ## Environment variables
 
-Names from README §12. Values come from the environment or `deploy/.env` (gitignored). Never commit values.
-
-- `DATABASE_URL`
-- `NATS_URL`
-- `REDIS_URL`
-- `OSRM_URL`
-- `MINIO_ENDPOINT`
-- `MINIO_KEY`
-- `MINIO_SECRET`
-- `JWT_SECRET`
-- `DEVICE_KEY_SALT`
-- `POSTGRES_PASSWORD` (read by the postgres service in compose; local-dev default applies if unset)
+Names from README §12. Values come from the environment or `deploy/.env` (gitignored). Never commit values: `DATABASE_URL`, `NATS_URL`, `REDIS_URL`, `OSRM_URL`, `MINIO_ENDPOINT`, `MINIO_KEY`, `MINIO_SECRET`, `JWT_SECRET`, `DEVICE_KEY_SALT`, `POSTGRES_PASSWORD` (read by the postgres service in compose; local-dev default applies if unset).
 
 ## Optional tunables
 
@@ -195,3 +181,13 @@ Values come from the environment, like the names above. Unset or empty means the
 - The loop runs in `services/ingest` every 30 s. Each active job gets at most one OSRM call per 5 min, and one on assign.
 - `eta_slip` is seeded disabled. Enable it per fleet with `PATCH /alert-rules` (`{"rules":[{"kind":"eta_slip","enabled":true}]}`, admin or manager).
 - Routing data is an operator step: `sh deploy/osrm/prepare.sh <pbf-file-name>`. See `docs/osrm.md`.
+
+## Reports (P21)
+
+- Route: `GET /reports/daily?date=YYYY-MM-DD&driver=<id>&format=json|csv` (JWT, `RequireAuth`). Admin, manager and dispatcher read the whole fleet (GF-324; dispatcher reading pending user confirmation); driver reads own row via `users.driver_id`. Bad `date`, `driver` or `format` is 400 `validation_failed`; unknown or cross-fleet driver is 404 `not_found`.
+- Web: `/reports` (`apps/web/src/reports/`); dev proxy key `/reports/daily` only.
+- Table `daily_driver_stats` (migration `012`), key `(fleet_id, driver_id, day)`, `day` is fleet-local. The API reads it; it never reads positions.
+- Rollup: `internal/reports`, run from `services/ingest`. Boot pass, then every 15 min under advisory lock `ROLL` (`0x524f4c4c`). Yesterday is recomputed in fleet-local `[00:00, 00:30)`. Writes are idempotent (GF-323).
+- Formulas (GF-321): a leg is two consecutive samples of one vehicle inside the local day with gap ≤ 300 s. Distance is the `ST_DistanceSphere` sum. Idle is a leg whose opening speed is < 1.0 km/h, counted in gap seconds. A leg goes to the driver of the pairing active at its opening sample. On-time is `delivered_at <= window_end` over jobs with a full window. Jobs count by `delivered_at` in fleet time.
+- CSV (GF-327): `date,driver_id,driver_name,jobs_completed,on_time_count,on_time_denom,on_time_pct,distance_m,idle_s`, CRLF, streamed; `on_time_pct` is empty when null.
+- Worker metrics `fleetops_reports_rollup_*` are registered privately until P22.
