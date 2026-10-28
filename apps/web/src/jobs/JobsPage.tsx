@@ -3,6 +3,7 @@ import { Link } from 'react-router'
 import type { Job, JobState, JobsFilter } from '../api/types'
 import { AssignmentPanel } from './AssignmentPanel'
 import { useJobs } from './queries'
+import { AlertBell } from '../alerts/AlertBell'
 
 const STATES: JobState[] = ['created', 'assigned', 'accepted', 'en_route', 'picked_up', 'delivered', 'failed', 'cancelled']
 
@@ -33,6 +34,7 @@ export function JobsPage() {
         <span className="title">Jobs</span>
         <Link to="/jobs/new">New job</Link>
         <Link to="/map">Map</Link>
+        <AlertBell />
       </header>
 
       <form aria-label="Filters" onSubmit={(e) => e.preventDefault()}>

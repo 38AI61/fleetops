@@ -13,6 +13,7 @@ import { bboxParam } from './bbox'
 import { followCenter, nextFollowId, type FollowEvent } from './follow'
 import { useMapVehicles } from './useMapVehicles'
 import { useNow } from './useNow'
+import { AlertBell } from '../alerts/AlertBell'
 
 const WORLD_BBOX = bboxParam({ west: -180, south: -90, east: 180, north: 90 })
 const NO_VEHICLES: never[] = []
@@ -89,6 +90,7 @@ export function MapPage() {
         <span className="title">Operations map</span>
         <ConnectionBadge />
         <Link to="/jobs">Jobs</Link>
+        <AlertBell />
         <button type="button" onClick={() => void logout()}>
           Log out
         </button>

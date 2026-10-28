@@ -12,6 +12,7 @@ import (
 	"github.com/labstack/echo/v4/middleware"
 	"github.com/nats-io/nats.go/jetstream"
 
+	"fleetops/internal/alerts"
 	"fleetops/internal/auth"
 	"fleetops/internal/dispatch"
 	"fleetops/internal/geofence"
@@ -98,6 +99,9 @@ func NewServer(d Deps) *echo.Echo {
 
 	gh := &geofence.Handler{Store: &geofence.Store{DB: d.DB}}
 	gh.Register(e, auth.RequireAuth(d.Issuer))
+
+	alh := &alerts.Handler{Store: &alerts.Store{DB: d.DB}, Clock: d.Clock}
+	alh.Register(e, auth.RequireAuth(d.Issuer))
 
 	// Device route: no JWT group (GF-64). The device key is checked inside the handler.
 	ih := &ingest.Handler{DB: d.DB, Salt: d.DeviceKeySalt, Clock: d.Clock, Gate: d.Gate, JS: d.NATS}

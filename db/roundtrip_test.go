@@ -13,8 +13,8 @@ import (
 	"fleetops/internal/testinfra"
 )
 
-// TestMigrationRoundTrip is the P1 smoke test extended in P2 and P17: up ->
-// down to zero -> up on PostGIS, with migrations 001-010 applied.
+// TestMigrationRoundTrip is the P1 smoke test extended in P2, P17 and P19: up ->
+// down to zero -> up on PostGIS, with migrations 001-011 applied.
 func TestMigrationRoundTrip(t *testing.T) {
 	dsn := testinfra.StartPostgis(t)
 
@@ -38,7 +38,7 @@ func TestMigrationRoundTrip(t *testing.T) {
 		if err := m.Up(); err != nil {
 			t.Fatalf("up: %v", err)
 		}
-		assertVersion(t, m, 10)
+		assertVersion(t, m, 11)
 		assertSchema(t, conn, true)
 	})
 
@@ -56,7 +56,7 @@ func TestMigrationRoundTrip(t *testing.T) {
 		if err := m.Up(); err != nil {
 			t.Fatalf("up again: %v", err)
 		}
-		assertVersion(t, m, 10)
+		assertVersion(t, m, 11)
 		assertSchema(t, conn, true)
 	})
 

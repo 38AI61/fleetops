@@ -21,6 +21,7 @@ import {
   type DrawState,
   type LngLat,
 } from './draw'
+import { AlertBell } from '../alerts/AlertBell'
 
 // Draw actions as a reducer, the same shape NewJobPage uses for picks (GF-219).
 type DrawAction =
@@ -90,6 +91,7 @@ export function ZonesPage() {
         <span className="title">Zones</span>
         <Link to="/map">Map</Link>
         <Link to="/jobs">Jobs</Link>
+        <AlertBell />
       </header>
 
       <div className="zones">

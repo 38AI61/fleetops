@@ -18,6 +18,7 @@ import (
 	"github.com/golang-migrate/migrate/v4/source/iofs"
 
 	fleetdb "fleetops/db"
+	"fleetops/internal/alerts"
 	"fleetops/internal/auth"
 	"fleetops/internal/config"
 	"fleetops/internal/devicesfile"
@@ -141,6 +142,10 @@ func Run(ctx context.Context, db *sql.DB, opts Options, pw PasswordSource) (Resu
 		opts.FleetName, opts.Timezone,
 	).Scan(&fleetID); err != nil {
 		return Result{}, fmt.Errorf("insert fleet: %w", err)
+	}
+	// The three alert rules commit with the fleet (D-08, GF-290).
+	if err := alerts.SeedRules(ctx, tx, fleetID); err != nil {
+		return Result{}, fmt.Errorf("seed alert rules: %w", err)
 	}
 
 	store := users.NewStore(db)
