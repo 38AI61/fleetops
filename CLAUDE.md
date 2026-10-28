@@ -174,5 +174,14 @@ Values come from the environment, like the names above. Unset or empty means the
 - Roles (README §8): GET admin, manager, dispatcher; POST and DELETE admin and dispatcher. Driver 403, anonymous 401.
 - Validation (400 `validation_failed`): polygon is one closed exterior ring of 4 to 1000 positions, valid in PostGIS, stored counter-clockwise. Circle is centre plus `radius_m` (1 to 100000). Optional `dwell_min` (1 to 1440) and `schedule` (`days`, `from`, `to`, `tz`).
 - Conflicts: a case-insensitive duplicate name in the fleet is 409 `conflict`. Deleting a fence with `geofence_events` rows is 409 too.
-- `bbox` is computed on every write and never taken from the client. P17 writes no `geofence_events` rows and runs no evaluator.
+- `bbox` is computed on every write and never taken from the client. P17 wrote no `geofence_events` rows; the P18 evaluator writes them.
 - Web: route `/zones` (`apps/web/src/geofences/ZonesPage.tsx`). Dev proxy `/geofences` → `127.0.0.1:10010` (XHR only).
+
+## Geofence evaluator (P18)
+
+- Flush hook: `evaluateGeofences` in `internal/ingest/consume.go`, after `pub.Publish` and before the ack loop. Input: `FlushResult.Observed` (stored fixes in `(server_ts, msg_id)` order).
+- The hook runs on a context detached from the flush deadline with a 1 s budget. An evaluation error never changes the ack.
+- Debounce: 30 s per vehicle-fence pair, anchored at the last emitted event's `server_ts`. Dwell: first inside fix at or after `dwell_min`, once per episode. No sweeper.
+- Rebuild: pair state loads lazily per vehicle from `geofence_events` over the last 24 h.
+- Candidate SQL: `geofences_bbox_gix` prefilter, then `ST_Covers` (polygon) or `ST_DWithin` (circle).
+- Metrics: `fleetops_geofence_evaluation_duration_seconds`, `fleetops_geofence_events_total{kind}`, `fleetops_geofence_debounced_total`, `fleetops_geofence_evaluation_failures_total{stage}` (stage: `candidates`, `state`, `insert`).
