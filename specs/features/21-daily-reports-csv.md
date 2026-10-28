@@ -226,3 +226,78 @@ Testing policy: `testinfra.PostgisImage` for every DB test (GF-12). No mock DB. 
 - GF-192 hub identity binding (P23).
 
 **Decision for the user to confirm:** GF-324 reads README §8 "Dispatcher: own fleet" as fleet-wide read access. If the user wants dispatchers excluded, the change is a role-matrix edit (see SPEC-AMEND repeat), and the role tests change accordingly.
+
+## Validation results and deviations
+
+Run 2026-10-28 on `phase-21-daily-reports-csv`, commits `b49ed44` (G1) through `c507102` in build order, then the G6 commit that holds this section. Host: Go 1.27.3 (`/root/.local/go/bin`), golangci-lint v2.15.0, Docker with `postgis/postgis:16-3.4` through testcontainers, Node for the web apps. No compose stack was started.
+
+### G0 baseline (before any edit)
+
+- `make lint`: `0 issues.`, exit 0. `make test`: exit 0, 27 packages `ok`, no FAIL.
+- `apps/web`: `typecheck` exit 0; `test` 16 files, 88 tests passed; `build` exit 0.
+- `apps/driver-pwa` (not touched, recorded only): `npm ci` exit 0; `test` 19 files, 129 tests passed; `build` exit 0 (`check-pwa-build: ok`).
+- Pins confirmed: highest migration `011_alerts_core` (P21 adds `012`); `fleets.timezone` (`004`); `drivers` and `vehicle_pairings` shapes as in the Baseline facts; `apierr` has `not_found` (404) and `validation_failed` (400); the migration round-trip harness is `db/roundtrip_test.go`, and the step-down pattern is `internal/alerts/seed_test.go`. `retainMonths` was not re-read.
+- The constitution file `specs/constitution/constitution.md` does not exist. The constitution is `mission.md`, `roadmap.md` (R-1 to R-9, §1) and `tech-stack.md`. R-rules were checked against the diff (see Deviations).
+
+### Files per task group
+
+- **G1** (`b49ed44`): `db/migrations/012_daily_driver_stats.{up,down}.sql`, `internal/reports/migration_integration_test.go`.
+- **G2** (`97dfde6`, `c507102`): `internal/reports/{rollup,pass,metrics}.go`; tests `helpers_test.go`, `golden_integration_test.go`, `attribution_integration_test.go`, `rollup_idempotent_integration_test.go`, `pass_integration_test.go`, `rollup_unit_test.go`, `property_integration_test.go`; `services/ingest/main.go` (worker wiring).
+- **G3** (`7ec2274`): `internal/reports/{store,csv,http}.go`, `http_integration_test.go`; `services/api/server.go`.
+- **G4** (`d45a6cc`): `apps/web/src/reports/{api.ts,ReportsPage.tsx,ReportsPage.test.tsx}`; `apps/web/src/App.tsx`; `apps/web/vite.config.ts`; Reports links in the topbars of `map/MapPage.tsx`, `geofences/ZonesPage.tsx`, `jobs/JobsPage.tsx`.
+- **G5** (`4331024`): `CLAUDE.md` (197 to 193 lines).
+- **G6 follow-ups**: `c4591a7` moves the migration head pin in `db/roundtrip_test.go` to 12; `c507102` moves the golden 600 s gap to 301 s so the 300/301 s boundary is covered.
+
+### Validation
+
+**(a) Gates.** Final tree:
+- `make fmt-check`: exit 0.
+- `make lint`: `0 issues.`, exit 0.
+- `make test`: exit 0, 28 packages `ok`, no FAIL. `internal/hub` did not flake, so no isolated re-run was needed. `internal/reports` ran `ok`.
+- `npm --prefix apps/web run typecheck`: exit 0.
+- `npm --prefix apps/web test`: 17 files, 92 tests passed (baseline 16 and 88: +1 file, +4 tests in `ReportsPage.test.tsx`).
+- `npm --prefix apps/web run build`: exit 0.
+
+**(b) Scope fence.** `git diff --name-only main...HEAD` (33 files, +2769 / −20) includes none of `README.md`, `e2e/`, `apps/driver-pwa/`, `internal/jobs|eta|alerts|geofence|simulator/`, `specs/constitution/`, `deploy/docker-compose.yml` or `.github/`. It includes `db/roundtrip_test.go`, the topbar pages `MapPage.tsx`, `ZonesPage.tsx` and `JobsPage.tsx`, and the server wiring beyond one line. Each is listed under Deviations.
+
+**(c) No secrets.** `git diff main...HEAD | grep -iE 'secret|password|token|key='` matches added lines, but none carries a secret value. They are: the CLAUDE.md variable names (no values); test placeholders (`'x'` as a password hash, the 32-byte test key `strings.Repeat("r", 32)`, `accessToken: 'token'` in the web test); and the words "token" and "secret" in comments. The literal pass condition ("no added value lines") is therefore not met by a plain grep. Manual review found no secret values.
+
+**(d) e2e not run.** `git diff --name-only main...HEAD -- e2e/` is empty. `make e2e` is **NOT RUN**: its `e2e-stack-up` step calls `e2e/scripts/stack.sh up`, and `stack.sh:127` runs `docker compose down -v`. That is the driver standing rule against running the compose teardown here.
+
+**(e) CLAUDE.md.** `wc -l CLAUDE.md` → `193` (< 200).
+
+**(f) P22 boundary.** Literal `grep -rniE 'prometheus|grafana|otel' internal/reports services/ apps/web/src/reports` **does not return nothing**. The matches are: `internal/reports/metrics.go` (the GF-325 series import and types, which GF-325 requires); `internal/reports/helpers_test.go` (the same registry in fixtures); `services/ingest/main.go:16,83` and `services/ws-hub/e2e_test.go:17,163` (existing P6/P8 registry lines, not added by P21). The intent holds: `grep -rniE 'promhttp|/metrics|grafana|otel|opentelemetry' internal/reports services/ apps/web/src/reports` returns only the existing comment `services/ingest/main.go:2` ("/metrics is P22"). Nothing is exposed and there is no OTel or Grafana.
+
+**(g) driver-pwa untouched.** `git diff --name-only main...HEAD -- apps/driver-pwa/` is empty.
+
+**(h) CSV correctness.** `TestReportsCSVHeaderAndRoundTrip` PASS: the header row is asserted byte for byte (`date,...,idle_s\r\n` as a prefix), `Content-Type: text/csv; charset=utf-8` and the `Content-Disposition` filename are asserted, and `encoding/csv` parses the body back to the JSON rows. The driver name `Cy, "the" jobs-only` round-trips. `TestReportsCSVEmptyDay` PASS (header only; JSON `rows: []`).
+
+**(i) Idempotence.** `TestRollupIdempotent` PASS: first run `{Deleted:1, Upserted:2}` (a stale row for a driver with no activity is removed); second run `{0, 0}` with the table snapshot identical; a changed input writes `{Upserted:1}` for the changed driver only.
+
+**(j) Attribution.** `TestAttributionPairingChange` PASS: D1 → D2 at 10:30 UTC. The leg opened at 10:26 and spanning the change goes wholly to D1. The leg opened at 10:30 goes to D2 (`started_at` inclusive, `ended_at` exclusive). The property test checks the multi-pairing precedence against the Go GF-321 model.
+
+**(k) Role matrix.** `TestReportsRoleMatrix` PASS: admin, manager and dispatcher each cover default, own-driver filter, other-driver filter, cross-fleet driver (404), unknown driver (404) and CSV. The driver role covers own row by default, own filter, other driver (404), cross-fleet (404), CSV, and an unlinked driver (empty list; filter 404). Anonymous is 401. `TestReportsBadParams` PASS (400 for bad date, date format, driver, format).
+
+**Reports package, verbose** (`go test ./internal/reports -race -count=1 -v`): all PASS, including `TestMigration012RoundTrip`, `TestGoldenDay` (23 h NY day: 4 jobs, on-time 1/2, idle 180 s, distance within 0.5 m of the Go haversine; D3 jobs-only; driverless vehicle counts nothing), `TestPassLockSkipsAndCounts`, `TestPassPostMidnightWindow`, `TestPassSkipsBadFleetTZ`, `TestPropertyRollupMatchesReference` (25 seeded fleet-days, 6 vehicles each, seed `20260308/21`, SQL equals the Go reference), `TestDayBoundsLength` (23 h, 25 h, 24 h), `TestLocalDayUsesFleetZone`, `TestDistanceSphereMatchesHaversine`, `TestInYesterdayWindow`.
+
+### Deviations
+
+1. **`db/roundtrip_test.go`** is not in the fence's list. Migration 012 moves the head, and the existing `TestMigrationRoundTrip` pins head 11. The first `make test` failed with `version: want 11, got 12`. I changed the pin to 12 (three lines, one comment) in `c4591a7`.
+2. **Topbar links in `MapPage.tsx`, `ZonesPage.tsx`, `JobsPage.tsx`.** The topbars are per page and list routes, so G4's "if one lists routes" applies. The fence names only "the topbar nav component", so this goes beyond it. One link line each.
+3. **`services/api/server.go`** is more than one line: an import, a two-line handler construction, and a blank line. The route needs both a handler and a store.
+4. **Validation (f)** cannot pass literally: GF-325 requires the Prometheus registry in `internal/reports`. See (f).
+5. **Validation (c)** does not return "no added lines" by plain grep. See (c).
+6. **GF-324 status codes for `driver`.** The spec says both "malformed id → 404" and "bad driver integer → 400". I chose: a non-integer `driver` is 400 `validation_failed`; an integer that is unknown, cross-fleet, or not the caller's (driver role) is 404 `not_found`.
+7. **Row set.** A driver gets a row when at least one leg counts (gap ≤ 300 s, attributed) or a delivered job exists. A leg with gap > 300 s does not create a row by itself.
+8. **Pairing lookup (GF-321).** The query is implemented as written, with `driver_id IS NOT NULL` in the WHERE clause. So if the latest active pairing at the opening sample is driverless, an earlier active pairing with a driver can be picked. Open pairings are unique per vehicle, so this needs overlapping history.
+9. **CSV download in the web app.** The link keeps the dated `href` (`/reports/daily?date=…&format=csv`). The click goes through `apiFetch` and saves a blob, because a plain link cannot send the bearer token and would get 401.
+10. **Default date in the UI** is the browser's local date. The UI has no fleet timezone. The API default (no `date`) is fleet-local.
+11. **Bad fleet timezone** is logged on every pass that hits it. GF-320 says "logs once"; the counter still goes up per fleet per pass.
+12. **Spec status line** (line 3, "planned … not implemented") is left as written. The append-only rule applies to existing sections.
+13. **Dispatcher reading** (GF-324) is implemented as stated, fleet-wide, per the run instruction. The README §8 row is untouched. The user still needs to confirm it.
+
+### Residuals (stated in the spec, not fixed)
+
+- GF-320: a late sample for yesterday that arrives after 00:30 local is not reflected until the next boot.
+- The `maintDone` join gap in `services/ingest/main.go` is untouched (out of scope).
+- `make e2e` has not run (see (d)). The browser flow of the CSV download and the report page has not been exercised outside the component test.
