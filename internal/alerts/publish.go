@@ -48,9 +48,10 @@ func Encode(a Raised) (string, []byte, error) {
 	return Subject(a.FleetID), body, nil
 }
 
-// publishRaised sends each committed alert after the commit (GF-299). A failure
-// is logged and counted and never changes the alert row (GF-4, GF-301).
-func publishRaised(p Publisher, m *Metrics, raised []Raised) {
+// PublishRaised sends each committed alert after the commit (GF-299). A failure
+// is logged and counted and never changes the alert row (GF-4, GF-301). The ETA
+// loop calls it with a nil *Metrics, which the metric calls accept.
+func PublishRaised(p Publisher, m *Metrics, raised []Raised) {
 	for _, a := range raised {
 		subj, body, err := Encode(a)
 		if err == nil {

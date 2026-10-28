@@ -141,7 +141,7 @@ func (e *Evaluator) Pass(ctx context.Context) ([]Raised, error) {
 		}
 	}
 	if e.Publisher != nil {
-		publishRaised(e.Publisher, e.Metrics, raised)
+		PublishRaised(e.Publisher, e.Metrics, raised)
 	}
 	if e.Notifier != nil {
 		e.notifyCritical(ctx, raised)

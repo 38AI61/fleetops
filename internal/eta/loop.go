@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/lib/pq"
+
+	"fleetops/internal/alerts"
 )
 
 // Interval is the loop tick (GF-306). It bounds assign latency; the 5-min limit is GF-307.
@@ -28,6 +30,9 @@ type Loop struct {
 	Limiter *Limiter
 	Clock   func() time.Time
 	Metrics *Metrics
+	// Publisher sends alert.raised after the pass commits. Nil skips the publish (GF-299).
+	// The eta_slip warning is not critical, so no Notifier runs here (GF-300).
+	Publisher alerts.Publisher
 }
 
 // Run runs one pass per Interval until ctx is done. A pass error is logged; the next tick tries again.
@@ -56,6 +61,9 @@ func (l *Loop) now() time.Time {
 // candidate is one active job with the points the route call needs.
 type candidate struct {
 	id          int64
+	fleetID     int64
+	vehicleID   int64
+	windowEnd   *time.Time
 	hasPosition bool
 	from        Point
 	hasTarget   bool
@@ -93,6 +101,12 @@ func (l *Loop) Pass(ctx context.Context) error {
 	}
 	l.Limiter.Prune(active)
 
+	slipOn, err := loadSlipRules(ctx, tx)
+	if err != nil {
+		return fmt.Errorf("load eta_slip rules: %w", err)
+	}
+	var raised []alerts.Raised
+
 	osrmSkipped := 0
 	for _, c := range cands {
 		if !c.hasPosition {
@@ -126,6 +140,17 @@ func (l *Loop) Pass(ctx context.Context) error {
 			c.id, clampETA(minutes)); err != nil {
 			return fmt.Errorf("write eta for job %d: %w", c.id, err)
 		}
+
+		// The slip check runs only on this fresh value and only when the fleet's rule is enabled (GF-310, GF-313).
+		if slipOn[c.fleetID] {
+			a, err := raiseSlip(ctx, tx, c, clampETA(minutes), now)
+			if err != nil {
+				return err
+			}
+			if a != nil {
+				raised = append(raised, *a)
+			}
+		}
 	}
 	if osrmSkipped > 0 {
 		// One line per pass, not per job (GF-314).
@@ -138,6 +163,10 @@ func (l *Loop) Pass(ctx context.Context) error {
 	if l.Metrics != nil {
 		l.Metrics.PassDuration.Observe(time.Since(start).Seconds())
 	}
+	// Publish after commit only, as the evaluator does (GF-299).
+	if l.Publisher != nil && len(raised) > 0 {
+		alerts.PublishRaised(l.Publisher, nil, raised)
+	}
 	return nil
 }
 
@@ -145,7 +174,7 @@ func (l *Loop) Pass(ctx context.Context) error {
 // The origin is the vehicle's latest position. The target is pickup for assigned and accepted, else dropoff.
 func loadCandidates(ctx context.Context, tx *sql.Tx) ([]candidate, error) {
 	rows, err := tx.QueryContext(ctx, `
-		SELECT j.id,
+		SELECT j.id, j.fleet_id, j.vehicle_id, j.window_end,
 		       ST_Y(vl.geom::geometry), ST_X(vl.geom::geometry),
 		       ST_Y((CASE WHEN j.state IN ('assigned','accepted') THEN j.pickup ELSE j.dropoff END)::geometry),
 		       ST_X((CASE WHEN j.state IN ('assigned','accepted') THEN j.pickup ELSE j.dropoff END)::geometry)
@@ -162,11 +191,16 @@ func loadCandidates(ctx context.Context, tx *sql.Tx) ([]candidate, error) {
 	for rows.Next() {
 		var (
 			c                candidate
+			windowEnd        sql.NullTime
 			fromLat, fromLng sql.NullFloat64
 			toLat, toLng     sql.NullFloat64
 		)
-		if err := rows.Scan(&c.id, &fromLat, &fromLng, &toLat, &toLng); err != nil {
+		if err := rows.Scan(&c.id, &c.fleetID, &c.vehicleID, &windowEnd, &fromLat, &fromLng, &toLat, &toLng); err != nil {
 			return nil, err
+		}
+		if windowEnd.Valid {
+			we := windowEnd.Time
+			c.windowEnd = &we
 		}
 		c.hasPosition = fromLat.Valid && fromLng.Valid
 		c.from = Point{Lat: fromLat.Float64, Lng: fromLng.Float64}

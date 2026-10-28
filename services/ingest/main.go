@@ -116,7 +116,7 @@ func run() error {
 	}()
 
 	// The ETA loop stops and is joined before the DB closes, beside the evaluator (GF-306).
-	etaLoop := &eta.Loop{DB: db, Router: eta.NewOSRMRouter(cfg.OSRMURL), Limiter: eta.NewLimiter(eta.AttemptWindow), Clock: time.Now, Metrics: eta.NewMetrics(reg)}
+	etaLoop := &eta.Loop{DB: db, Router: eta.NewOSRMRouter(cfg.OSRMURL), Limiter: eta.NewLimiter(eta.AttemptWindow), Clock: time.Now, Metrics: eta.NewMetrics(reg), Publisher: nc}
 	etaCtx, cancelETA := context.WithCancel(ctx)
 	etaDone := make(chan struct{})
 	go func() {
