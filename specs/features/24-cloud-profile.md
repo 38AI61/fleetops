@@ -356,3 +356,52 @@ Not SPEC-AMEND (recorded as decisions in this spec only): `functions/` Pages pro
 - Pages preview deployments, cookie `Domain` tuning, and custom domains.
 - e2e spec changes (`e2e/**`).
 - Push and merge: the orchestrator performs `--no-ff` merge to `main` and `git push origin main`.
+
+## Validation results and deviations
+
+Run on 2026-10-28 on the phase branch. Host with Docker 29.1.3, node v26.12.0, Go 1.27.3 from `/root/.local/go/bin` via `deploy/.local/tools.mk`. Logs for each check are in `deploy/.local/p24-validation/` (gitignored). The orchestrator smoke S0–S9 is not part of this record.
+
+### Check results
+
+1. **(a)** `make fmt-check lint test`: exit 0. Lint: `0 issues.` Test: all packages `ok`, no `FAIL` or `panic`, including `fleetops/deploy/cloud`, `fleetops/services/cloud`, `fleetops/internal/cloudproxy`. Tail:
+   ```
+   ok  	fleetops/tools/seed	100.320s
+   ok  	fleetops/tools/simulator	1.037s
+   exit=0
+   ```
+   The first run was killed mid-way by a mistake in this session (a `pkill` pattern matched the shell running it). It was rerun from scratch and the rerun is the result above.
+2. **(b)** Scope fence: `git diff --name-only main...HEAD | grep -Ev '<fence>'` printed `deploy/config_test.go`. That path is outside the fence. See D1. Everything else is in the fence.
+3. **(c)** `git diff --quiet main...HEAD -- README.md deploy/docker-compose.yml db/migrations e2e specs/constitution/roadmap.md`: exit 0.
+4. **(d)** Secrets in the diff. `postgres(ql)?://|neon\.tech|BEGIN … PRIVATE KEY`: one hit, `"postgres://fleetops@db.invalid/fleetops"`, a test fixture with no credential. `(JWT_SECRET|DEVICE_KEY_SALT|MINIO_SECRET|MINIO_KEY|SEED_PASSWORD)=[^$<[:space:]]`: hits are `JWT_SECRET=j` in a unit-test fixture, and the `SEED_PASSWORD=…` placeholder in `docs/cloud.md`. No real value is present. The Neon tree check is not run. See D2.
+5. **(e)** `wc -l CLAUDE.md`: **197** (≤ 199).
+6. **(f)** `docker build -f deploy/cloud/Dockerfile.render -t fleetops:cloud-p24 .`: exit 0 (`Successfully tagged fleetops:cloud-p24`). Binary check, using a per-name loop (see D3):
+   ```
+   /usr/local/bin/fleetops-api
+   /usr/local/bin/fleetops-ingest
+   /usr/local/bin/fleetops-ws-hub
+   /usr/local/bin/fleetops-cloud
+   /usr/local/bin/minio
+   ```
+   Image config: `user=fleetops`, `entrypoint=[/usr/local/bin/fleetops-cloud]`, `exposed=8000/tcp`, `FANOUT_MODE=nats`, `PORT=8000`, uid 10001.
+7. **(g)** `node --test apps/web/functions-test apps/driver-pwa/functions-test`: exit 0, `tests 13`, `pass 13`, `fail 0`.
+8. **(h)** `npm --prefix apps/web run build`: exit 0 (`✓ built in 296ms`). `npm --prefix apps/driver-pwa run build`: exit 0 (`check-pwa-build: ok`). `npm --prefix apps/web test`: exit 0, `Test Files 18 passed (18)`, `Tests 94 passed (94)`.
+9. **(i)** `git diff main...HEAD -U0 -- services/api | grep -E '^\+.*(GET|POST|PATCH|DELETE|PUT)\('`: one line, `+	e.GET("/healthz", …`. Only the `/healthz` route is new.
+10. **(j)** `git diff --quiet main...HEAD -- deploy/docker-compose.yml`: exit 0.
+11. **(k)** `make help` lists `cloud-image`, `cloud-seed`, `cloud-smoke`, `pages-test`.
+12. **(l)** `.dockerignore` lines 3–4: `deploy/.local/`, `deploy/.env`.
+13. **(m)** `TestCIWorkflowShape`, `TestDockerfileShape` and `TestDockerignoreExcludesLocalSecrets` run inside (a): `ok fleetops/deploy/cloud`. Also `go mod tidy -diff` produced no output after the G7 `go.mod` change.
+14. **(n)** `make lint`: `0 issues.` (golangci-lint v2.15.0, the same run as (a)). No new `nolint` was added in G7 or G8.
+
+Extra checks run for G8:
+
+- `make cloud-smoke` with no `SMOKE_*` env: prints `smoke: SMOKE_ADMIN_EMAIL and SMOKE_PASSWORD must be set` and `result=FAIL`, exit 1. With `SMOKE_BASE` pointing at a closed port: `healthz=fail … result=FAIL` after the 120 s wait, exit 1. The live smoke (S5) needs the container and is in the orchestrator's S-steps.
+- `node --check deploy/cloud/smoke.mjs`: exit 0.
+
+### Deviations
+
+- **D1 (scope fence, `deploy/config_test.go`).** The G4 `PORTS.md` row for the smoke port 10019 moves 10019 out of the unassigned list. `TestPortsDocAssignsObservabilityPorts` asserts that list, so it was updated from `10016–10019` to `10016–10018`. The file sits outside the fence's `deploy/cloud/` entry. It is required for `make test` to pass, so it stays.
+- **D2 (validation (d3) not run).** The spec's check `git grep -q -F -f <neon-uri.txt> -- .` reads the Neon URI file. The brief says that file is off-limits, so the check was skipped. The diff checks in (d) found no URI, and the orchestrator should run (d3) itself.
+- **D3 (validation (f) binary check).** `sh -c 'command -v a b c d e'` only checks the first name. The check was run as a loop over the five names, and all five paths printed.
+- **D4 (smoke WS count window).** The spec says "count `position.batch` frames for up to 60 s" while the simulator runs for 90 s. The implementation counts frames over the whole 90 s simulator run. This gives a superset of the spec's window and is easier to reason about. It can be changed to 60 s if the orchestrator wants the exact window.
+- **D5 (`MINIO_IMAGE` pin).** The Dockerfile build pulls `bitnamilegacy/minio:2025.7.23-debian-12-r5` (G4 pin). The `bitnamilegacy` namespace is what G4 pinned, and the build used it unchanged. The G4 test asserts the copy is present, not the tag. Recorded here so the tag is visible; the tag itself was not re-verified against upstream in this run.
+- **D6 (live smoke and orchestrator steps).** S0–S9 are not run here, by scope. `make cloud-smoke` against a live container was not run, and the Render, Neon and Pages wiring was not touched.
