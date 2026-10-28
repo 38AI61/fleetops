@@ -22,6 +22,7 @@ import (
 	"fleetops/internal/fanout"
 	"fleetops/internal/ingest"
 	"fleetops/internal/presence"
+	"fleetops/internal/reports"
 )
 
 func main() {
@@ -126,6 +127,19 @@ func run() error {
 	defer func() {
 		cancelETA()
 		<-etaDone
+	}()
+
+	// The daily rollup stops and is joined before the DB closes, beside the ETA loop (GF-320).
+	rollup := &reports.Loop{DB: db, Clock: time.Now, Metrics: reports.NewMetrics(reg)}
+	reportsCtx, cancelReports := context.WithCancel(ctx)
+	reportsDone := make(chan struct{})
+	go func() {
+		defer close(reportsDone)
+		rollup.Run(reportsCtx, reports.Interval)
+	}()
+	defer func() {
+		cancelReports()
+		<-reportsDone
 	}()
 
 	// Boot order: maintenance first pass (ensure, then retain), then the consumer.
