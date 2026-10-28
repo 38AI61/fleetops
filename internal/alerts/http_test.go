@@ -265,7 +265,7 @@ func TestAlertsListIsolationAndWindow(t *testing.T) {
 }
 
 // TestAlertRulesPatch: unknown kind, out-of-range and malformed params are 400;
-// partial updates keep untouched fields; eta_slip reports evaluated false (GF-290, GF-298).
+// partial updates keep untouched fields; eta_slip reports evaluated true (GF-290, GF-298, GF-317).
 func TestAlertRulesPatch(t *testing.T) {
 	v := newEnv(t)
 	fleet := v.fleet("rules")
@@ -316,8 +316,8 @@ func TestAlertRulesPatch(t *testing.T) {
 		t.Fatal("geofence_exit_outside_schedule still enabled after patch")
 	}
 	eta := got[KindETASlip]
-	if eta.Enabled || eta.Evaluated {
-		t.Fatalf("eta_slip = %+v, want disabled and evaluated false", eta)
+	if eta.Enabled || !eta.Evaluated {
+		t.Fatalf("eta_slip = %+v, want disabled and evaluated true (GF-317)", eta)
 	}
 
 	rec = v.do(http.MethodPatch, "/alert-rules", tok, `{"rules":[{"kind":"eta_slip","enabled":true}]}`)
@@ -328,8 +328,25 @@ func TestAlertRulesPatch(t *testing.T) {
 		t.Fatalf("rules body: %v", err)
 	}
 	for _, r := range body.Rules {
-		if r.Kind == KindETASlip && (!r.Enabled || r.Evaluated) {
-			t.Fatalf("eta_slip after enable = %+v, want enabled, evaluated false", r)
+		if r.Kind == KindETASlip && (!r.Enabled || !r.Evaluated) {
+			t.Fatalf("eta_slip after enable = %+v, want enabled, evaluated true", r)
+		}
+	}
+
+	// The read side agrees with the write: GET shows the enabled eta_slip as evaluated (GF-317).
+	rec = v.do(http.MethodGet, "/alert-rules", tok, "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET /alert-rules = %d (%s), want 200", rec.Code, rec.Body.String())
+	}
+	var listed struct {
+		Rules []Rule `json:"rules"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &listed); err != nil {
+		t.Fatalf("GET rules body: %v", err)
+	}
+	for _, r := range listed.Rules {
+		if r.Kind == KindETASlip && (!r.Enabled || !r.Evaluated) {
+			t.Fatalf("GET eta_slip = %+v, want enabled and evaluated true", r)
 		}
 	}
 }

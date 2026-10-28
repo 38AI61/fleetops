@@ -217,6 +217,6 @@ func scanRule(s scanner) (Rule, error) {
 		return Rule{}, err
 	}
 	r.Params = json.RawMessage(params)
-	r.Evaluated = r.Kind != KindETASlip
+	r.Evaluated = true // every kind evaluates since P20 (GF-317)
 	return r, nil
 }
