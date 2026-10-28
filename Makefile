@@ -9,7 +9,7 @@ GOLANGCI_LINT_VERSION := v2.15.0
 MIGRATE_VERSION := v4.18.3
 MIGRATE_ARGS ?= up
 
-.PHONY: help tools fmt-check lint test migrate seed seed-demo e2e e2e-stack-up e2e-stack-down e2e-test
+.PHONY: help tools fmt-check lint test migrate seed seed-demo hub-scale e2e e2e-stack-up e2e-stack-down e2e-test
 .DEFAULT_GOAL := help
 
 help: ## list targets
@@ -37,6 +37,9 @@ seed: ## bootstrap first fleet + admin (D-05); SEED_ARGS="--admin-email you@exam
 
 seed-demo: ## seed fleet, admin, 50 demo vans, devices and demo drivers (first seed only); SEED_ARGS="--admin-email you@example.com"
 	$(GO) run ./tools/seed --demo-devices $(SEED_ARGS)
+
+hub-scale: ## run 10k synthetic WS connections under -race (GF-343; override count with SCALE_CONNS)
+	$(GO) test ./internal/hub -race -count=1 -timeout 30m -run TestScaleConnections -args -scale.conns=$(or $(SCALE_CONNS),10000)
 
 e2e: ## happy-path E2E: stack up, Playwright spec, stack down (CI calls this)
 	@trap '$(MAKE) --no-print-directory e2e-stack-down' EXIT; $(MAKE) --no-print-directory e2e-stack-up && $(MAKE) --no-print-directory e2e-test
