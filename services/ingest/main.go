@@ -18,6 +18,7 @@ import (
 
 	"fleetops/internal/alerts"
 	"fleetops/internal/config"
+	"fleetops/internal/eta"
 	"fleetops/internal/fanout"
 	"fleetops/internal/ingest"
 	"fleetops/internal/presence"
@@ -112,6 +113,19 @@ func run() error {
 	defer func() {
 		cancelEval()
 		<-evalDone
+	}()
+
+	// The ETA loop stops and is joined before the DB closes, beside the evaluator (GF-306).
+	etaLoop := &eta.Loop{DB: db, Router: eta.NewOSRMRouter(cfg.OSRMURL), Limiter: eta.NewLimiter(eta.AttemptWindow), Clock: time.Now, Metrics: eta.NewMetrics(reg)}
+	etaCtx, cancelETA := context.WithCancel(ctx)
+	etaDone := make(chan struct{})
+	go func() {
+		defer close(etaDone)
+		etaLoop.Run(etaCtx)
+	}()
+	defer func() {
+		cancelETA()
+		<-etaDone
 	}()
 
 	// Boot order: maintenance first pass (ensure, then retain), then the consumer.
