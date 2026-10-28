@@ -10,6 +10,7 @@ import { LoginRoute, RequireSession } from './auth/guard'
 const MapPage = lazy(() => import('./map/MapPage').then((m) => ({ default: m.MapPage })))
 const JobsPage = lazy(() => import('./jobs/JobsPage').then((m) => ({ default: m.JobsPage })))
 const NewJobPage = lazy(() => import('./jobs/NewJobPage').then((m) => ({ default: m.NewJobPage })))
+const ZonesPage = lazy(() => import('./geofences/ZonesPage').then((m) => ({ default: m.ZonesPage })))
 
 export function App() {
   useEffect(() => {
@@ -47,6 +48,16 @@ export function App() {
               <RequireSession>
                 <Suspense fallback={<p>Loading</p>}>
                   <NewJobPage />
+                </Suspense>
+              </RequireSession>
+            }
+          />
+          <Route
+            path="/zones"
+            element={
+              <RequireSession>
+                <Suspense fallback={<p>Loading</p>}>
+                  <ZonesPage />
                 </Suspense>
               </RequireSession>
             }

@@ -3,6 +3,7 @@ import { useEffect, useRef } from 'react'
 import { Map as MapLibreMap, type GeoJSONSource, type StyleSpecification } from 'maplibre-gl'
 import type { LatLng } from '../api/types'
 import { marksCollection, type PickMarks } from '../jobs/pick'
+import type { OverlayCollection } from '../geofences/draw'
 import type { VehicleCollection } from '../status/display'
 import { bboxParam } from './bbox'
 
@@ -24,10 +25,15 @@ export interface MapViewProps {
   // Pick mode (GF-219). When onMapClick is set, an empty-space click calls it instead of onDeselect.
   onMapClick?: (point: LatLng) => void
   marks?: PickMarks
+  // Stored fences, read-only (GF-274), and the in-progress draw (GF-272). Absent means no layer.
+  fences?: OverlayCollection
+  draft?: OverlayCollection
 }
 
 const SOURCE_ID = 'vehicles'
 const PICKS_SOURCE_ID = 'picks'
+const FENCES_SOURCE_ID = 'fences'
+const DRAFT_SOURCE_ID = 'draft'
 const BOUNDS_DEBOUNCE_MS = 400
 
 // Background only. P9 renders no basemap tiles, so the style works offline (GF-158).
@@ -35,6 +41,44 @@ const BLANK_STYLE: StyleSpecification = {
   version: 8,
   sources: {},
   layers: [{ id: 'background', type: 'background', paint: { 'background-color': '#e5e7eb' } }],
+}
+
+// One GeoJSON overlay: fill and line for polygons and rings, a circle layer for
+// points (GF-274, D-38). Created on first data, then updated with setData.
+function setOverlay(map: MapLibreMap, id: string, data: OverlayCollection, color: string) {
+  const source = map.getSource<GeoJSONSource>(id)
+  if (source) {
+    source.setData(data)
+    return
+  }
+  map.addSource(id, { type: 'geojson', data })
+  map.addLayer({
+    id: `${id}-fill`,
+    type: 'fill',
+    source: id,
+    filter: ['==', ['geometry-type'], 'Polygon'],
+    paint: { 'fill-color': color, 'fill-opacity': 0.15 },
+  })
+  map.addLayer({
+    id: `${id}-line`,
+    type: 'line',
+    source: id,
+    filter: ['!=', ['geometry-type'], 'Point'],
+    paint: { 'line-color': color, 'line-width': 2 },
+  })
+  map.addLayer({
+    id: `${id}-point`,
+    type: 'circle',
+    source: id,
+    filter: ['==', ['geometry-type'], 'Point'],
+    paint: { 'circle-radius': 4, 'circle-color': color, 'circle-stroke-color': '#ffffff', 'circle-stroke-width': 1.5 },
+  })
+}
+
+// Only the overlays whose props are set are drawn. Absent props leave the map unchanged.
+function syncOverlays(map: MapLibreMap, p: MapViewProps) {
+  if (p.fences) setOverlay(map, FENCES_SOURCE_ID, p.fences, '#2563eb')
+  if (p.draft) setOverlay(map, DRAFT_SOURCE_ID, p.draft, '#ea580c')
 }
 
 // Thin wiring only. Decisions live in the pure modules (GF-167).
@@ -111,6 +155,7 @@ export function MapView(props: MapViewProps) {
           'circle-stroke-width': 2,
         },
       })
+      syncOverlays(map, propsRef.current)
       loadedRef.current = true
       scheduleBounds()
     })
@@ -159,6 +204,12 @@ export function MapView(props: MapViewProps) {
     map.getSource<GeoJSONSource>(PICKS_SOURCE_ID)?.setData(marksCollection(props.marks ?? {}))
     // Keyed on the points, not the marks object, so a parent re-render does not re-set the data.
   }, [props.marks?.pickup, props.marks?.dropoff])
+
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !loadedRef.current) return
+    syncOverlays(map, props)
+  }, [props.fences, props.draft])
 
   useEffect(() => {
     const map = mapRef.current
