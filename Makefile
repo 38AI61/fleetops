@@ -10,7 +10,7 @@ GOLANGCI_LINT_VERSION := v2.15.0
 MIGRATE_VERSION := v4.18.3
 MIGRATE_ARGS ?= up
 
-.PHONY: help tools fmt-check lint test migrate seed seed-demo hub-scale loadtest loadtest-ws loadtest-assign loadtest-report loadtest-ingest-steady loadtest-ingest-burst loadtest-static e2e e2e-stack-up e2e-stack-down e2e-test cloud-image cloud-seed pages-test
+.PHONY: help tools fmt-check lint test migrate seed seed-demo hub-scale loadtest loadtest-ws loadtest-assign loadtest-report loadtest-ingest-steady loadtest-ingest-burst loadtest-static e2e e2e-stack-up e2e-stack-down e2e-test cloud-image cloud-seed cloud-smoke pages-test
 .DEFAULT_GOAL := help
 
 help: ## list targets
@@ -46,6 +46,9 @@ seed-demo: ## seed fleet, admin, 50 demo vans, devices and demo drivers (first s
 	$(GO) run ./tools/seed --demo-devices $(SEED_ARGS)
 cloud-seed: ## Seed the cloud demo fleet non-interactively (SEED_PASSWORD env, first seed only)
 	$(GO) run ./tools/seed --demo-devices --password-from-env $(SEED_ARGS)
+
+cloud-smoke: ## smoke a running cloud container at SMOKE_BASE (default http://127.0.0.1:10019); needs SMOKE_ADMIN_EMAIL, SMOKE_PASSWORD
+	GO=$(GO) node deploy/cloud/smoke.mjs
 
 hub-scale: ## run 10k synthetic WS connections under -race (GF-343; override count with SCALE_CONNS)
 	$(GO) test ./internal/hub -race -count=1 -timeout 30m -run TestScaleConnections -args -scale.conns=$(or $(SCALE_CONNS),10000)
