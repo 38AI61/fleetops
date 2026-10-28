@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"fleetops/internal/geofence"
 	"fleetops/internal/jobs"
 	"fleetops/internal/registry"
 )
@@ -168,6 +169,13 @@ func TestRoleMatrix(t *testing.T) {
 		{"GET /jobs/:id/nearest", http.MethodGet, "/jobs/0/nearest", func(int) string { return "" },
 			[5]int{ok200, ok200, ok200, forb, unau}},
 
+		// P17 geofence rows (GF-268). README §8: admin and dispatcher write; manager reads.
+		{"GET /geofences", http.MethodGet, "/geofences", func(int) string { return "" },
+			[5]int{ok200, ok200, ok200, forb, unau}},
+		{"POST /geofences", http.MethodPost, "/geofences", func(n int) string {
+			return fmt.Sprintf(`{"type":"Feature","geometry":{"type":"Polygon","coordinates":[[[13.0,52.0],[13.1,52.0],[13.1,52.1],[13.0,52.1],[13.0,52.0]]]},"properties":{"name":"RM Zone %d","kind":"polygon"}}`, n)
+		}, [5]int{ok201, forb, ok201, forb, unau}},
+
 		// P11 driver rows (GF-186). Only the driver cell is allowed; the others are refused by role.
 		{"GET /driver/jobs/today", http.MethodGet, "/driver/jobs/today", func(int) string { return "" },
 			[5]int{forb, forb, forb, ok200, unau}},
@@ -255,6 +263,30 @@ func TestRoleMatrix(t *testing.T) {
 			r := h.send(t, http.MethodPost, path, tokens[c.role], ctype, body)
 			if r.status != deliverWant[i] {
 				t.Fatalf("status = %d (%s), want %d", r.status, r.body, deliverWant[i])
+			}
+		})
+	}
+
+	// P17 geofence delete row (GF-268). DELETE needs a fence the caller can delete,
+	// and an admin delete would leave the dispatcher cell a 404. Each cell gets its
+	// own fence, created through the store, so every cell starts from the same state.
+	geofenceWant := [5]int{http.StatusNoContent, forb, http.StatusNoContent, forb, unau}
+	for i, c := range roleCols {
+		in, err := geofence.Parse(strings.NewReader(fmt.Sprintf(
+			`{"type":"Feature","geometry":{"type":"Polygon","coordinates":[[[13.0,52.0],[13.1,52.0],[13.1,52.1],[13.0,52.1],[13.0,52.0]]]},"properties":{"name":"RM delete %s","kind":"polygon"}}`,
+			c.name)))
+		if err != nil {
+			t.Fatalf("geofence fixture input: %v", err)
+		}
+		f, err := (&geofence.Store{DB: h.db}).Create(ctx, fleet, in)
+		if err != nil {
+			t.Fatalf("geofence fixture: %v", err)
+		}
+		path := fmt.Sprintf("/geofences/%d", f.ID)
+		t.Run("DELETE /geofences/:id/"+c.name, func(t *testing.T) {
+			r := h.do(t, http.MethodDelete, path, tokens[c.role], "", nil)
+			if r.status != geofenceWant[i] {
+				t.Fatalf("status = %d (%s), want %d", r.status, r.body, geofenceWant[i])
 			}
 		})
 	}
