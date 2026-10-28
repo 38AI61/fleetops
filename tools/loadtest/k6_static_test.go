@@ -55,7 +55,7 @@ var scripts = []scenarioScript{
 // readScript returns one script's text, failing the test when it is missing.
 func readScript(t *testing.T, rel string) string {
 	t.Helper()
-	body, err := os.ReadFile(filepath.Join(k6Dir, rel))
+	body, err := os.ReadFile(filepath.Join(k6Dir, rel)) //nolint:gosec // fixed script paths in this repo, not user input
 	if err != nil {
 		t.Fatalf("read %s: %v", rel, err)
 	}
@@ -128,6 +128,7 @@ func TestK6ScriptsParseWithNode(t *testing.T) {
 		if err := os.WriteFile(tmp, []byte(readScript(t, f)), 0o600); err != nil {
 			t.Fatalf("write temp copy of %s: %v", f, err)
 		}
+		//nolint:gosec // node from PATH checks a temp copy this test wrote
 		if out, err := exec.Command(node, "--check", tmp).CombinedOutput(); err != nil {
 			t.Errorf("%s: node --check: %v\n%s", f, err, out)
 		}
