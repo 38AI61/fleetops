@@ -67,6 +67,13 @@ func NewServer(d Deps) *echo.Echo {
 	e.Use(middleware.Recover())
 	e.Use(middleware.BodyLimitWithConfig(middleware.BodyLimitConfig{Skipper: skipDeliverBody, Limit: maxBodyBytes}))
 
+	// /healthz is liveness only: no database or NATS probe, so a Neon cold start
+	// cannot mark the instance unhealthy (GF-354). Like /metrics, it sits outside
+	// every JWT group and outside the role matrix.
+	e.GET("/healthz", func(c echo.Context) error {
+		return c.JSON(http.StatusOK, map[string]string{"status": "ok"})
+	})
+
 	// /metrics is unauthenticated and sits outside every JWT group (GF-329, GF-330).
 	// The api owns no fleetops series, so its registry holds only the Go and process collectors.
 	e.GET("/metrics", echo.WrapHandler(observability.Handler(observability.NewRegistry())))

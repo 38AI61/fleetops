@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -65,6 +66,8 @@ type Config struct {
 
 	WSRoomCap   int
 	PresenceTTL time.Duration
+	// WSOriginPatterns replaces the hub's default vite origins when set (GF-353).
+	WSOriginPatterns []string
 
 	OSRMURL string
 }
@@ -219,6 +222,26 @@ func loadWS(lookup func(string) (string, bool), cfg *Config) error {
 		cfg.PresenceTTL = d
 	}
 
+	return loadWSOrigins(lookup, cfg)
+}
+
+// loadWSOrigins reads WS_ORIGIN_PATTERNS (GF-353): a comma-separated list of
+// coder/websocket origin patterns. Unset or empty keeps the hub defaults. Each
+// entry is trimmed and must be non-empty. The error names the variable only.
+func loadWSOrigins(lookup func(string) (string, bool), cfg *Config) error {
+	v, ok := lookup("WS_ORIGIN_PATTERNS")
+	if !ok || v == "" {
+		return nil
+	}
+	var patterns []string
+	for _, raw := range strings.Split(v, ",") {
+		p := strings.TrimSpace(raw)
+		if p == "" {
+			return errors.New("WS_ORIGIN_PATTERNS entries must be non-empty")
+		}
+		patterns = append(patterns, p)
+	}
+	cfg.WSOriginPatterns = patterns
 	return nil
 }
 

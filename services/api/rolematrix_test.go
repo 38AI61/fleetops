@@ -15,6 +15,7 @@ import (
 )
 
 // roleCols are the callers of the role matrix (R-6). "" means no token.
+// /healthz (GF-354) and /metrics (GF-329) are exempt: unauthenticated probes outside every JWT group.
 var roleCols = []struct{ name, role string }{
 	{"admin", "admin"},
 	{"manager", "manager"},

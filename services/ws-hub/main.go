@@ -95,7 +95,7 @@ func run(ctx context.Context) error {
 	// The base context is cancelled only after Shutdown stops new upgrades.
 	base, cancelBase := context.WithCancel(context.Background())
 	defer cancelBase()
-	h := hub.New(base, hub.Options{RoomCap: cfg.WSRoomCap, Verifier: issuer})
+	h := hub.New(base, hub.Options{RoomCap: cfg.WSRoomCap, Verifier: issuer, OriginPatterns: cfg.WSOriginPatterns})
 
 	subs, err := h.Subscribe(ctx, tr, nc)
 	if err != nil {
