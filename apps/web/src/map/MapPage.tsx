@@ -90,6 +90,7 @@ export function MapPage() {
         <span className="title">Operations map</span>
         <ConnectionBadge />
         <Link to="/jobs">Jobs</Link>
+        <Link to="/reports">Reports</Link>
         <AlertBell />
         <button type="button" onClick={() => void logout()}>
           Log out

@@ -34,6 +34,7 @@ export function JobsPage() {
         <span className="title">Jobs</span>
         <Link to="/jobs/new">New job</Link>
         <Link to="/map">Map</Link>
+        <Link to="/reports">Reports</Link>
         <AlertBell />
       </header>
 

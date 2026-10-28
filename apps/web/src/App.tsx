@@ -11,6 +11,7 @@ const MapPage = lazy(() => import('./map/MapPage').then((m) => ({ default: m.Map
 const JobsPage = lazy(() => import('./jobs/JobsPage').then((m) => ({ default: m.JobsPage })))
 const NewJobPage = lazy(() => import('./jobs/NewJobPage').then((m) => ({ default: m.NewJobPage })))
 const ZonesPage = lazy(() => import('./geofences/ZonesPage').then((m) => ({ default: m.ZonesPage })))
+const ReportsPage = lazy(() => import('./reports/ReportsPage').then((m) => ({ default: m.ReportsPage })))
 
 export function App() {
   useEffect(() => {
@@ -58,6 +59,16 @@ export function App() {
               <RequireSession>
                 <Suspense fallback={<p>Loading</p>}>
                   <ZonesPage />
+                </Suspense>
+              </RequireSession>
+            }
+          />
+          <Route
+            path="/reports"
+            element={
+              <RequireSession>
+                <Suspense fallback={<p>Loading</p>}>
+                  <ReportsPage />
                 </Suspense>
               </RequireSession>
             }
