@@ -7,6 +7,9 @@ import { ZonesPage } from './ZonesPage'
 // MapLibre needs WebGL, which jsdom lacks (GF-167). The draw logic is tested in draw.test.ts.
 vi.mock('../map/MapView', () => ({ MapView: () => null }))
 
+// The topbar bell needs a QueryClient this page test does not provide. Its own tests cover it (alerts/AlertBell.test.tsx).
+vi.mock('../alerts/AlertBell', () => ({ AlertBell: () => null }))
+
 vi.mock('./api', () => ({
   useFences: () => ({
     data: {
