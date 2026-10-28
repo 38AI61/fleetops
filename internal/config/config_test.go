@@ -342,6 +342,7 @@ func TestConfigErrorsNeverContainValues(t *testing.T) {
 		{"REDIS_URL", "http://" + bad + ".invalid"},
 		{"FLEETOPS_WS_ROOM_CAP", bad},
 		{"FLEETOPS_PRESENCE_TTL", bad},
+		{"OSRM_URL", "ftp://" + bad + ".invalid"},
 	}
 	for _, tc := range cases {
 		env := redisEnv("redis://redis.invalid:6379")
@@ -355,6 +356,57 @@ func TestConfigErrorsNeverContainValues(t *testing.T) {
 		}
 		if strings.Contains(err.Error(), bad) {
 			t.Errorf("error %q contains the offending value", err)
+		}
+	}
+}
+
+func TestLoadOSRMURLDefaultsWhenUnsetOrEmpty(t *testing.T) {
+	for _, env := range []map[string]string{
+		validEnv(strings.Repeat("d", 32)),
+		func() map[string]string {
+			e := validEnv(strings.Repeat("d", 32))
+			e["OSRM_URL"] = ""
+			return e
+		}(),
+	} {
+		cfg, err := load(fakeEnv(env))
+		if err != nil {
+			t.Fatalf("unexpected error %v", err)
+		}
+		if cfg.OSRMURL != "http://127.0.0.1:10005" {
+			t.Errorf("OSRMURL = %q, want compose default http://127.0.0.1:10005", cfg.OSRMURL)
+		}
+	}
+}
+
+func TestLoadOSRMURLAccepts(t *testing.T) {
+	for _, raw := range []string{"http://osrm.invalid:5000", "https://router.example.invalid/"} {
+		env := validEnv(strings.Repeat("d", 32))
+		env["OSRM_URL"] = raw
+		cfg, err := load(fakeEnv(env))
+		if err != nil {
+			t.Fatalf("%q: unexpected error %v", raw, err)
+		}
+		if cfg.OSRMURL != raw {
+			t.Errorf("OSRMURL = %q, want %q", cfg.OSRMURL, raw)
+		}
+	}
+}
+
+func TestLoadOSRMURLRejectsSchemeAndHost(t *testing.T) {
+	for _, raw := range []string{"ftp://bogus-7731.invalid", "127.0.0.1:5000", "https:///bogus-7731", "bogus-7731.invalid:5000"} {
+		env := validEnv(strings.Repeat("d", 32))
+		env["OSRM_URL"] = raw
+		_, err := load(fakeEnv(env))
+		if err == nil {
+			t.Errorf("%q: want error, got nil", raw)
+			continue
+		}
+		if !strings.Contains(err.Error(), "OSRM_URL") {
+			t.Errorf("%q: error should name OSRM_URL: %v", raw, err)
+		}
+		if strings.Contains(err.Error(), raw) {
+			t.Errorf("%q: error should not echo the value: %v", raw, err)
 		}
 	}
 }

@@ -40,6 +40,9 @@ const (
 	maxPresenceTTL     = 600 * time.Second
 )
 
+// DefaultOSRMURL is the compose port of the osrm service (GF-303). OSRM_URL is optional.
+const DefaultOSRMURL = "http://127.0.0.1:10005"
+
 // Config holds the settings the API and tools need at startup.
 type Config struct {
 	DatabaseURL   string
@@ -54,6 +57,8 @@ type Config struct {
 
 	WSRoomCap   int
 	PresenceTTL time.Duration
+
+	OSRMURL string
 }
 
 // Load reads DATABASE_URL, JWT_SECRET, DEVICE_KEY_SALT, NATS_URL, and REDIS_URL from the environment.
@@ -107,6 +112,9 @@ func load(lookup func(string) (string, bool)) (Config, error) {
 		return Config{}, err
 	}
 	if err := loadWS(lookup, &cfg); err != nil {
+		return Config{}, err
+	}
+	if err := loadOSRM(lookup, &cfg); err != nil {
 		return Config{}, err
 	}
 
@@ -177,6 +185,22 @@ func loadWS(lookup func(string) (string, bool), cfg *Config) error {
 			return fmt.Errorf("FLEETOPS_PRESENCE_TTL must be a duration from %s to %s", minPresenceTTL, maxPresenceTTL)
 		}
 		cfg.PresenceTTL = d
+	}
+
+	return nil
+}
+
+// loadOSRM reads the optional OSRM_URL (GF-303). Unset or empty means the default.
+// The value must be an http or https URL with a host. The error names the variable only.
+func loadOSRM(lookup func(string) (string, bool), cfg *Config) error {
+	cfg.OSRMURL = DefaultOSRMURL
+
+	if v, ok := lookup("OSRM_URL"); ok && v != "" {
+		u, err := url.Parse(v)
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" {
+			return errors.New("OSRM_URL must be an http:// or https:// URL with a host")
+		}
+		cfg.OSRMURL = v
 	}
 
 	return nil

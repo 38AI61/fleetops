@@ -43,8 +43,7 @@ Run from the repo root. `make help` lists every target.
 - `make migrate` — apply migrations to `$DATABASE_URL` (`MIGRATE_ARGS` defaults to `up`)
   - Roll back one step: `make migrate MIGRATE_ARGS="down 1"`
   - Recover from a dirty version: fix the schema by hand, then `make migrate MIGRATE_ARGS="force <version>"`
-- `make seed` — bootstrap the first fleet and admin (D-05). Run `SEED_ARGS="--admin-email <email>" make seed`. The password comes from a TTY prompt or one line on stdin, never a flag. Exit 0 when already seeded (no prompt); exit 2 on usage errors.
-- `SEED_ARGS="--admin-email <email> --demo-devices" make seed` — first seed only: also creates 50 demo vehicles with tracker devices and writes `deploy/.local/devices.json`. The flag needs `DEVICE_KEY_SALT` (at least 32 bytes).
+- `make seed` — bootstrap the first fleet and admin (D-05). Run `SEED_ARGS="--admin-email <email>" make seed`; add ` --demo-devices` on the first seed only to also create 50 demo vehicles with tracker devices and write `deploy/.local/devices.json` (the flag needs `DEVICE_KEY_SALT`, at least 32 bytes). The password comes from a TTY prompt or one line on stdin, never a flag. Exit 0 when already seeded (no prompt); exit 2 on usage errors.
 - `make seed-demo` — stub; exits 1 until P23
 
 ## Tooling
@@ -56,17 +55,12 @@ Run from the repo root. `make help` lists every target.
 - Local ingest consumer: same env as the API, `DATABASE_URL=… JWT_SECRET=… DEVICE_KEY_SALT=… NATS_URL=nats://127.0.0.1:10004 REDIS_URL=redis://127.0.0.1:10003 go run ./services/ingest`. No listener; it drains `GPS_RAW` into `positions`, publishes to Redis, and runs partition maintenance.
 - Local WS hub: same env as the API, `DATABASE_URL=… JWT_SECRET=… DEVICE_KEY_SALT=… NATS_URL=nats://127.0.0.1:10004 REDIS_URL=redis://127.0.0.1:10003 go run ./services/ws-hub` listens on `127.0.0.1:10011` (`-addr` overrides). It does not connect to Postgres. Clients open `WS /stream?fleet=<id>` and send `{"type":"auth","token":…}` as the first frame.
 - Local simulator (P8): `go run ./tools/simulator --fleet=50 --rate=5s --api http://127.0.0.1:10010`. It reads `deploy/.local/devices.json` and needs no env vars.
-- `JWT_SECRET` must be at least 32 bytes or the API and `make seed` refuse to start; generate one per shell with `openssl rand -hex 32`.
-- `DEVICE_KEY_SALT` is required and must be at least 32 bytes, or the API refuses to start before it opens the database (GF-30). Generate one per shell with `openssl rand -hex 32`. It is the HMAC key for device keys (D-29) and license hashes (D-31).
+- `JWT_SECRET` must be at least 32 bytes or the API and `make seed` refuse to start, and `DEVICE_KEY_SALT` is required and must be at least 32 bytes, or the API refuses to start before it opens the database (GF-30); generate each per shell with `openssl rand -hex 32`. `DEVICE_KEY_SALT` is the HMAC key for device keys (D-29) and license hashes (D-31).
 - **Salt rotation (GF-50):** changing `DEVICE_KEY_SALT` invalidates every device key and every license hash. P3 ships no re-keying tool.
 - Registry (P3): `/vehicles`, `/drivers`, `/vehicles/:id/pairings` follow the README §8 role matrix. Device endpoints (`POST /devices`, `POST /devices/:id/rotate`, `POST /devices/:id/revoke`) are admin only; a device key never authenticates them (GF-47). Issued and rotated keys are shown once.
 - Ingest (P4): `POST /ingest/position` is device-key authenticated. The key goes in the `X-Device-Key` header, never in the body or `Authorization`. Any JWT gets 401 on this route (GF-52, GF-64). Startup creates the `GPS_RAW` stream (GF-59).
 - Map (P8): `GET /map/vehicles?bbox=minLng,minLat,maxLng,maxLat`, JWT, any role, fleet-scoped.
-- Migration rules (GF-5):
-  - Files are `db/migrations/NNN_snake_name.up.sql` and `.down.sql`, sequential from `001`, no timestamps.
-  - Each file is one transaction-friendly script: no `BEGIN`/`COMMIT`, no `CREATE INDEX CONCURRENTLY`.
-  - Migrations are forward-only once merged to `main`; `down` exists for dev and the round-trip test.
-  - A dirty `schema_migrations` makes `make migrate` fail. Fix the schema by hand, then `force`. Never edit `schema_migrations` by SQL.
+- Migration rules (GF-5): files are `db/migrations/NNN_snake_name.up.sql` and `.down.sql`, sequential from `001`, no timestamps; each file is one transaction-friendly script (no `BEGIN`/`COMMIT`, no `CREATE INDEX CONCURRENTLY`); migrations are forward-only once merged to `main`, with `down` kept for dev and the round-trip test; a dirty `schema_migrations` makes `make migrate` fail — fix the schema by hand, then `force`, and never edit `schema_migrations` by SQL.
 - Tests and CI use `postgis/postgis:16-3.4` (`testinfra.PostgisImage`, GF-12). Compose uses the same tag (GF-62).
 - CI (`.github/workflows/ci.yml`) runs the same make targets as the local gates.
 
@@ -121,8 +115,7 @@ Values come from the environment, like the names above. Unset or empty means the
 
 ## Proof of delivery (P12)
 
-- Deliver route: `POST /driver/jobs/:id/deliver`, driver role only, own jobs only, valid from `picked_up` only. Multipart fields: `photo` (file; type sniffed by `http.DetectContentType` on the first 512 bytes, declared Content-Type ignored; JPEG, PNG or WebP; at most 5242880 bytes), `lat` and `lng` (text, finite, lat in [-90, 90], lng in [-180, 180]).
-- Success is 200 with the job object. A replay of `delivered` is 200 with no event, no publish and no upload; the body is still validated.
+- Deliver route: `POST /driver/jobs/:id/deliver`, driver role only, own jobs only, valid from `picked_up` only. Multipart fields: `photo` (file; type sniffed by `http.DetectContentType` on the first 512 bytes, declared Content-Type ignored; JPEG, PNG or WebP; at most 5242880 bytes), `lat` and `lng` (text, finite, lat in [-90, 90], lng in [-180, 180]). Success is 200 with the job object; a replay of `delivered` is 200 with no event, no publish and no upload; the body is still validated.
 - Errors: 400 `validation_failed`; 404 for wrong driver, cross-fleet or malformed id; 409 for any other state; 413 `payload_too_large` for a photo over 5 MiB; 503 `proofs_unavailable` when no proof store is configured. Nothing is stored on any refusal from the gate or body checks.
 - Object key `proofs/<fleet_id>/<job_id>/<uuid>.<ext>` in bucket `proofs`. The key is stored verbatim in `jobs.proof_photo`. The same UPDATE sets `delivered_at` and `delivery_geom`.
 - Presigned URLs: every job object has `proof_photo_url`, a presigned GET valid 15 minutes, signed on read and never stored. It is null when the job has no proof.
@@ -195,3 +188,10 @@ Values come from the environment, like the names above. Unset or empty means the
 - Fanout: `alerts.<fleet_id>` on core NATS, type `alert.raised`. Drivers never receive it.
 - Notifier: `alerts.LogNotifier` logs critical alerts for managers. It is a stub, with no email or push.
 - Web: bell in the topbar of the map, jobs and zones pages, polling `GET /alerts` every 30 s.
+
+## ETA (P20)
+
+- OSRM client and ETA loop: `internal/eta`. `OSRM_URL` is in the env list above; default `http://127.0.0.1:10005`.
+- The loop runs in `services/ingest` every 30 s. Each active job gets at most one OSRM call per 5 min, and one on assign.
+- `eta_slip` is seeded disabled. Enable it per fleet with `PATCH /alert-rules` (`{"rules":[{"kind":"eta_slip","enabled":true}]}`, admin or manager).
+- Routing data is an operator step: `sh deploy/osrm/prepare.sh <pbf-file-name>`. See `docs/osrm.md`.
