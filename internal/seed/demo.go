@@ -8,8 +8,10 @@ import (
 	"sort"
 	"time"
 
+	"fleetops/internal/auth"
 	"fleetops/internal/devicesfile"
 	"fleetops/internal/registry"
+	"fleetops/internal/users"
 )
 
 // DemoVehicleCount is the number of demo vehicles, a constant and not a flag (GF-136).
@@ -55,15 +57,17 @@ func loopDistinct(pts []devicesfile.Point) bool {
 	return true
 }
 
-// RunDemo creates DemoVehicleCount vehicles, each with one tracker device
-// paired 1:1, through the registry path so audit and key hashing are shared
-// (GF-136). It then writes devices.json (GF-137, GF-139). Seed calls it only
-// after it creates the first fleet, so a rerun never reaches this code.
-func RunDemo(ctx context.Context, db *sql.DB, res Result, salt []byte, path string, clock func() time.Time) error {
+// RunDemo creates DemoVehicleCount vehicles, each with one tracker device and
+// one demo driver paired to it (GF-136, GF-339), through the registry path so
+// audit and key hashing are shared. It then writes devices.json (GF-137,
+// GF-139) and demo-users.json (GF-339). Seed calls it only after it creates the
+// first fleet, so a rerun never reaches this code.
+func RunDemo(ctx context.Context, db *sql.DB, res Result, salt []byte, path, usersPath string, clock func() time.Time) error {
 	svc := &registry.Service{DB: db, Salt: salt, Clock: clock}
 	actor := registry.Actor{UserID: res.UserID, FleetID: res.FleetID}
 
 	devs := make([]devicesfile.Device, 0, DemoVehicleCount)
+	logins := make([]DemoDriver, 0, DemoDriverCount)
 	for i := 1; i <= DemoVehicleCount; i++ {
 		v, err := svc.CreateVehicle(ctx, actor, registry.VehicleInput{Plate: fmt.Sprintf("DEMO-%03d", i)})
 		if err != nil {
@@ -73,8 +77,21 @@ func RunDemo(ctx context.Context, db *sql.DB, res Result, salt []byte, path stri
 		if err != nil {
 			return fmt.Errorf("demo device for vehicle %d: %w; reset the database before rerunning", i, err)
 		}
-		deviceID := d.ID
-		if _, _, err := svc.SetPairing(ctx, actor, v.ID, registry.PairingInput{DeviceID: &deviceID}); err != nil {
+		drv, err := svc.CreateDriver(ctx, actor, registry.DriverInput{
+			Name:      fmt.Sprintf("Demo Driver %03d", i),
+			LicenseNo: fmt.Sprintf("DEMO%06d", i),
+		})
+		if err != nil {
+			return fmt.Errorf("demo driver %d: %w; reset the database before rerunning", i, err)
+		}
+		login, err := createDemoLogin(ctx, db, res.FleetID, i, drv.ID, v.ID)
+		if err != nil {
+			return fmt.Errorf("demo login %d: %w; reset the database before rerunning", i, err)
+		}
+		logins = append(logins, login)
+
+		deviceID, driverID := d.ID, drv.ID
+		if _, _, err := svc.SetPairing(ctx, actor, v.ID, registry.PairingInput{DeviceID: &deviceID, DriverID: &driverID}); err != nil {
 			return fmt.Errorf("pair demo vehicle %d: %w; reset the database before rerunning", i, err)
 		}
 		devs = append(devs, devicesfile.Device{
@@ -96,5 +113,57 @@ func RunDemo(ctx context.Context, db *sql.DB, res Result, salt []byte, path stri
 	if err := devicesfile.Write(path, file); err != nil {
 		return fmt.Errorf("demo devices exist in the database but the keys file was not written; reset the database: %w", err)
 	}
+	usersFile := DemoUsersFile{
+		Version:     DemoUsersVersion,
+		FleetID:     res.FleetID,
+		GeneratedAt: clock().UTC().Truncate(time.Second),
+		Drivers:     logins,
+	}
+	if err := writeDemoUsers(usersPath, usersFile); err != nil {
+		return fmt.Errorf("demo drivers exist in the database but the logins file was not written; reset the database: %w", err)
+	}
 	return nil
+}
+
+// createDemoLogin creates the driver login for driver i and links it to drv
+// in one transaction (GF-339). The password is generated and policy-checked
+// before the hash and before any write to the users table. It is returned only
+// so the file can record it.
+func createDemoLogin(ctx context.Context, db *sql.DB, fleetID int64, i int, driverID, vehicleID int64) (DemoDriver, error) {
+	password, err := newDemoPassword()
+	if err != nil {
+		return DemoDriver{}, err
+	}
+	if err := auth.CheckPolicy(password); err != nil {
+		return DemoDriver{}, fmt.Errorf("demo password: %w", err)
+	}
+	hash, err := auth.HashPassword(password)
+	if err != nil {
+		return DemoDriver{}, err
+	}
+
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return DemoDriver{}, fmt.Errorf("begin demo login: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	store := users.NewStore(db)
+	u, err := store.Create(ctx, tx, fleetID, demoEmail(i), hash, "driver")
+	if err != nil {
+		return DemoDriver{}, fmt.Errorf("insert driver user: %w", err)
+	}
+	if _, err := store.Update(ctx, tx, fleetID, u.ID, users.Patch{SetDriver: true, DriverID: &driverID}); err != nil {
+		return DemoDriver{}, fmt.Errorf("link driver user: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return DemoDriver{}, fmt.Errorf("commit demo login: %w", err)
+	}
+	return DemoDriver{
+		DriverID:  driverID,
+		UserID:    u.ID,
+		Email:     u.Email,
+		Password:  password,
+		VehicleID: vehicleID,
+	}, nil
 }

@@ -35,8 +35,8 @@ migrate: ## apply migrations (MIGRATE_ARGS="up" default; e.g. MIGRATE_ARGS="down
 seed: ## bootstrap first fleet + admin (D-05); SEED_ARGS="--admin-email you@example.com"
 	$(GO) run ./tools/seed $(SEED_ARGS)
 
-seed-demo: ## stub: demo fleet seed lands in P23
-	@echo "seed-demo: lands in P23 (roadmap)" >&2; exit 1
+seed-demo: ## seed fleet, admin, 50 demo vans, devices and demo drivers (first seed only); SEED_ARGS="--admin-email you@example.com"
+	$(GO) run ./tools/seed --demo-devices $(SEED_ARGS)
 
 e2e: ## happy-path E2E: stack up, Playwright spec, stack down (CI calls this)
 	@trap '$(MAKE) --no-print-directory e2e-stack-down' EXIT; $(MAKE) --no-print-directory e2e-stack-up && $(MAKE) --no-print-directory e2e-test

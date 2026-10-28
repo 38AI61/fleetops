@@ -1,7 +1,7 @@
 // Command seed bootstraps the first fleet and admin (D-05). It is run by
 // `make seed`. The password comes from a no-echo TTY prompt or one line on
 // stdin, never from a flag or the environment (GF-23). With --demo-devices it
-// also writes the demo devices on first seed (GF-135, GF-138).
+// also writes the demo devices and demo driver logins on first seed (GF-135, GF-138, GF-339).
 //
 // Exit codes: 0 seeded or already seeded, 1 runtime error, 2 usage error.
 package main
@@ -34,7 +34,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	adminEmail := fs.String("admin-email", "", "email of the first admin (required)")
 	fleetName := fs.String("fleet-name", "FleetOps", "name of the first fleet")
 	timezone := fs.String("timezone", "UTC", "IANA timezone of the first fleet")
-	demoDevices := fs.Bool("demo-devices", false, "on first seed, also create demo vehicles and tracker devices (needs DEVICE_KEY_SALT)")
+	demoDevices := fs.Bool("demo-devices", false, "on first seed, also create demo vehicles, tracker devices and demo drivers (needs DEVICE_KEY_SALT)")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -98,6 +98,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		norm.FleetName, res.FleetID, norm.AdminEmail, res.UserID)
 	if *demoDevices {
 		_, _ = fmt.Fprintf(stdout, "wrote %d demo devices to %s\n", seed.DemoVehicleCount, devicesfile.DefaultPath)
+		_, _ = fmt.Fprintf(stdout, "wrote %d demo driver logins to %s\n", seed.DemoDriverCount, seed.DemoUsersDefaultPath)
 	}
 	return 0
 }
