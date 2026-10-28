@@ -243,3 +243,56 @@ The GF-192 hub identity binding remains open and belongs to P23.
 - Compose changes beyond prometheus and grafana.
 - Merge to `main`; push.
 - Any P23+ content.
+
+## Validation results and deviations
+
+Run on `phase-22-observability` on this host (Go 1.27.3, golangci-lint v2.15.0, Docker present, OTEL endpoint env unset). Commits G1 to G7 are `9777916`, `ced0389`, `71a2add`, `ede4883`, `761c01c`, `a5b4357`, `992651a`, plus the GF-332 SPEC-AMEND row `3bb1c0c`.
+
+### G0 baselines (before any edit)
+
+- `make fmt-check`: exit 0.
+- `make lint`: `0 issues.`
+- `make test` (`go test ./... -race -count=1`): exit 0. 28 packages ok, 2 with no test files (`services/ingest`, `tools/...` before G1). No failure. The `internal/hub` flake policy was not needed.
+- `npm --prefix apps/web run typecheck`: exit 0. `npm --prefix apps/web test`: 17 files, 92 tests passed. `node_modules` present.
+- `npm --prefix apps/driver-pwa run typecheck`: exit 0. `npm --prefix apps/driver-pwa test`: 19 files, 129 tests passed. `node_modules` present.
+- `docker compose -f deploy/docker-compose.yml config -q`: exit 0.
+- `grep -rn 'GF-32[0-9]' specs/`: highest prior decision GF-328. `GF-329` appears only in `specs/features/22-observability.md` and `prompts/`.
+- OTel: `go mod download -json` resolves `go.opentelemetry.io/otel/sdk@v1.44.0` and `.../otlptrace/otlptracehttp@v1.44.0`.
+
+### Per-group test results
+
+- **G1** (`9777916`): `internal/observability` (`TestMetricsHandlerServesRegistry`), `services/ingest` (`TestIngestMetricsMux`), `services/api` (`TestAPIMetricsOutsideAuth`) pass.
+- **G2** (`ced0389`): `services/ws-hub` `TestWSConnectionsGauge` and `TestWSHubMetricsServed` pass (real `/stream` WS connection: 1 while open, 0 after close).
+- **G3** (`71a2add`): `internal/observability` `TestRegisteredSeriesAndLabels` passes (every README §9 name registered, every seeded label value at 0, no `fleet_id`).
+- **G4** (`ede4883`): `deploy` `TestComposeObservabilityBlocks`, `TestPrometheusConfigTargets`, `TestGrafanaProvisioningParses`, `TestPortsDocAssignsObservabilityPorts` pass.
+- **G5** (`761c01c`): `deploy` `TestDashboardJSON` passes (uid, four panels, `prometheus` datasource, G3 metric names).
+- **G6** (`a5b4357`): `TestInitTracingUnsetIsNoop` (unset and empty), `TestAssignEmitsSpan`, `TestAssignSpanOnError`, `TestAssignReplayStillSpans` pass. The existing `TestJobsAssignReplayAndReassign` and `TestJobsPublishOnePerTransition` stay green unchanged.
+- **G7** (`992651a`): `wc -l CLAUDE.md` = 193. The three port rows are present.
+
+### Validation checks (a)–(k)
+
+- **(a)** `make fmt-check`: exit 0. `make lint`: `0 issues.` `make test`: exit 0, 31 packages ok, 0 FAIL. Web typecheck and tests: exit 0, 92 passed. Driver-pwa typecheck and tests: exit 0, 129 passed, unchanged from G0.
+- **(b)** `git diff --name-only main...HEAD` touches only the allowed paths: `CLAUDE.md`, `deploy/**` (compose, `PORTS.md`, `prometheus/`, `grafana/`, two `*_test.go`), `go.mod`, `go.sum`, `internal/jobs/http.go`, `internal/observability/**`, `services/{api,ingest,ws-hub}/**`, `specs/constitution/mission.md` (one row), `specs/features/22-observability.md`, `prompts/**`. No `README.md`, `e2e/`, `apps/**`, `db/migrations/**` or `.github/` file. `git diff main...HEAD -- specs/constitution/` adds one row.
+- **(c)** `git diff main...HEAD | grep -iE 'secret|password|token|key='`: matches only placeholder text (`JWT_SECRET=…`, `DEVICE_KEY_SALT=…`) and the spec prose. No value is added.
+- **(d)** NOT RUN, standing reason: no `make e2e`, no `docker compose up`, no live Prometheus or Grafana scrape (driver standing rule). Only `docker compose config -q` ran, and the prometheus and grafana images were not pulled.
+- **(e)** `wc -l CLAUDE.md` = 193 (< 200).
+- **(f)** Each service's handler is tested in-process against the README §9 names: the ingest registry (`TestRegisteredSeriesAndLabels`), the ws-hub gauge (`TestWSHubMetricsServed`), and the api (`TestAPIMetricsOutsideAuth`, Go and process collectors). No live scrape.
+- **(g)** `TestAssignEmitsSpan` passes: one `jobs.assign` span with `job.id` equal to the job, via the in-memory exporter.
+- **(h)** `docker compose -f deploy/docker-compose.yml config -q`: exit 0. `TestDashboardJSON` passes.
+- **(i)** `TestInitTracingUnsetIsNoop` passes. `OTEL_EXPORTER_OTLP_ENDPOINT` was unset for the api suite (`ok fleetops/services/api`, 78.9 s). Log content was not captured, so "no exporter errors in logs" is covered only by the no-op test.
+- **(j)** No authenticated route added. `TestRoleMatrix` and `TestRoleMatrixIngest` pass unchanged. `/metrics` is unauthenticated per GF-329 and is reachable only on loopback per GF-330.
+- **(k)** `deploy/PORTS.md` lists 10008 (ingest metrics, `127.0.0.1`), 10014 (prometheus) and 10015 (grafana), and the unassigned line reads `Unassigned in range: 10000, 10001, 10009, 10016–10019.` `TestPortsDocAssignsObservabilityPorts` passes.
+
+### Deviations and interpretations
+
+1. **YAML parsing.** G0 found `gopkg.in/yaml.v3` absent from `go.mod`. Only the indirect `go.yaml.in/yaml/v3` is present. Per the spec's fallback, the config tests use line-based asserts. No YAML dependency was added.
+2. **Gauge test without `testutil`.** `prometheus/testutil` needs `github.com/kylelemons/godebug`, which is not in `go.sum`. Adding it would have broken the no-new-dependency rule. The gauge is read through `Registry.Gather` instead.
+3. **OTel dependency closure.** `go get` of `sdk` and `otlptracehttp` at v1.44.0 added transitive modules: `grpc v1.82.0`, `genproto` (`googleapis/api`, `googleapis/rpc`), `cenkalti/backoff/v5 v5.0.3`, `go.opentelemetry.io/proto/otlp v1.10.0`. It also upgraded two existing indirect modules: `otel/exporters/otlp/otlptrace` v1.29.0 to v1.44.0, and `grpc-gateway/v2` v2.27.1 to v2.29.0. `go mod tidy` then moved `otel`, `otel/trace`, `sdk`, `otlptracehttp` and `prometheus/client_model` from indirect to direct. No direct dependency beyond those was added. `go mod verify` passes. Flagged for review because the spec said "no other dependency changes".
+4. **Span status on success.** The span is not explicitly set to `Ok` on success. It stays `Unset`, and the test asserts "not Error". Setting `Ok` would be an addition the spec did not describe.
+5. **`/metrics` "identical" with and without JWT.** Sample values move between scrapes, so `TestAPIMetricsOutsideAuth` compares the `# TYPE` family set, not the bytes.
+6. **Ingest registry.** The ingest registry is now built with `observability.NewRegistry()`, so it also carries the Go and process collectors. The fleetops series are unchanged.
+7. **Ws-hub label check location.** `TestRegisteredSeriesAndLabels` lives in `internal/observability` and cannot import the `services/ws-hub` main package. The unlabelled-gauge check is in `services/ws-hub` `TestWSConnectionsGauge` instead.
+8. **GF-332 decision ID in tech-stack §11 not added.** The mission §7 "Rule" asks for a decision ID in `tech-stack.md` §11. The run's fence allowed only the §7 row, so the GF-332 entry in tech-stack §11 is NOT written. Needs a follow-up decision by the user.
+9. **Compose restart policy.** The two new services set `restart: unless-stopped`, matching the existing services. The spec did not state it.
+10. **CLAUDE.md trim (G7).** Merged the compose intro, the frontend and driver-pwa command bullets, and the CI sentence. Updated two stale facts: the ingest consumer now has its `/metrics` listener, and the reports rollup metrics are exposed on ingest `/metrics` (no longer "private until P22"). No rule was dropped.
+11. **Not verified on this host.** The compose scrape on Linux Docker Engine with host networking (GF-332 residual). The macOS Docker Desktop case is out of reach here.
