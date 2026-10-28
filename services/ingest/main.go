@@ -16,6 +16,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/redis/go-redis/v9"
 
+	"fleetops/internal/alerts"
 	"fleetops/internal/config"
 	"fleetops/internal/fanout"
 	"fleetops/internal/ingest"
@@ -77,7 +78,8 @@ func run() error {
 	}
 
 	// The registry is private to this process until P22 exposes it.
-	metrics := ingest.NewMetrics(prometheus.NewRegistry())
+	reg := prometheus.NewRegistry()
+	metrics := ingest.NewMetrics(reg)
 	counters := &ingest.Counters{}
 	buf := ingest.NewBuffer(cfg.FlushInterval, cfg.FlushMax, cfg.AccuracyMaxM, counters)
 	writer := ingest.NewWriter(db, counters)
@@ -97,6 +99,19 @@ func run() error {
 	defer func() {
 		cancelSweep()
 		<-sweepDone
+	}()
+
+	// The alert evaluator stops and is joined before the DB closes (GF-291).
+	evaluator := &alerts.Evaluator{DB: db, Clock: time.Now, Metrics: alerts.NewMetrics(reg)}
+	evalCtx, cancelEval := context.WithCancel(ctx)
+	evalDone := make(chan struct{})
+	go func() {
+		defer close(evalDone)
+		evaluator.Run(evalCtx, alerts.Interval)
+	}()
+	defer func() {
+		cancelEval()
+		<-evalDone
 	}()
 
 	// Boot order: maintenance first pass (ensure, then retain), then the consumer.
