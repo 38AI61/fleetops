@@ -116,3 +116,43 @@ jobs:
             e2e/playwright-report/
             e2e/test-results/
           retention-days: 7
+
+  image:
+    needs: [gates, e2e]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: echo "$GITHUB_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+
+      - name: Build cloud image
+        run: docker build -f deploy/cloud/Dockerfile.render -t ghcr.io/38ai61/fleetops:sha-${GITHUB_SHA} -t ghcr.io/38ai61/fleetops:latest .
+
+      - name: Push cloud image
+        run: |
+          docker push ghcr.io/38ai61/fleetops:sha-${GITHUB_SHA}
+          docker push ghcr.io/38ai61/fleetops:latest
+
+  deploy:
+    needs: image
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Trigger Render deploy
+        env:
+          RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+        run: |
+          if [ -z "$RENDER_DEPLOY_HOOK_URL" ]; then
+            echo "::notice::RENDER_DEPLOY_HOOK_URL not set; deploy skipped"
+            exit 0
+          fi
+          curl -fsS -X POST -o /dev/null "$RENDER_DEPLOY_HOOK_URL"
