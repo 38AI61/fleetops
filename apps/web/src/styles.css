@@ -668,3 +668,117 @@ section[aria-label="Assignment"] > p[role="alert"] {
   border-left: 4px solid var(--color-danger);
   color: var(--color-danger);
 }
+
+/* zones: two-column grid (stacks below 1024px, see the breakpoint block) */
+.zones-page .zones {
+  display: grid;
+  grid-template-columns: 320px minmax(0, 1fr);
+  align-items: start;
+  gap: var(--space-4);
+  padding: var(--space-4);
+}
+
+.zones-side {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.zones-draw {
+  padding: var(--space-4);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-card);
+}
+
+.zones-draw > [role="group"] {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+
+.zones-draw label {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin-top: var(--space-3);
+  font-weight: 500;
+}
+
+.zones-draw input {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.zones-draw > button {
+  width: 100%;
+  margin-top: var(--space-3);
+}
+
+.zones-draw > p[role="alert"] {
+  margin: var(--space-3) 0 0;
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-danger-bg);
+  border-left: 4px solid var(--color-danger);
+  color: var(--color-danger);
+  font-size: var(--text-sm);
+}
+
+.zones-side > section[aria-label="Zone list"] > p {
+  margin: var(--space-2) 0;
+  font-size: var(--text-sm);
+}
+
+.zones-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-card);
+}
+
+.zones-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--color-border);
+  font-size: var(--text-sm);
+}
+
+.zones-list li:last-child {
+  border-bottom: none;
+}
+
+.zones-list li > span:first-child {
+  font-weight: 600;
+}
+
+.zones-list li > span + span {
+  color: var(--color-text-muted);
+}
+
+.zones-list li > button {
+  margin-left: auto;
+  min-height: 28px;
+  padding: 0 var(--space-2);
+  font-size: var(--text-sm);
+}
+
+.zones-map {
+  position: relative;
+  min-width: 0;
+  min-height: 480px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.zones-map .map-canvas {
+  height: 100%;
+}
