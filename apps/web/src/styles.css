@@ -782,3 +782,25 @@ section[aria-label="Assignment"] > p[role="alert"] {
 .zones-map .map-canvas {
   height: 100%;
 }
+
+/* dispatcher breakpoint (GF-360): designed for 1280px, floor 1024px. Nothing is redesigned. */
+@media (max-width: 1023px) {
+  .new-job {
+    flex-wrap: wrap;
+  }
+  .new-job-map {
+    flex: 1 1 100%;
+    min-height: 360px;
+  }
+  .new-job-form {
+    width: 100%;
+    max-width: 340px;
+  }
+  .zones-page .zones {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .jobs-page,
+  .reports-page {
+    overflow-x: auto;
+  }
+}

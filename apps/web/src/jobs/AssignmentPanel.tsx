@@ -38,6 +38,7 @@ export function AssignmentPanel({ jobId, onAssigned }: AssignmentPanelProps) {
 
       <button
         type="button"
+        className="primary"
         disabled={!chosen || assign.isPending}
         onClick={() => {
           if (!chosen) return
