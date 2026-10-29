@@ -483,3 +483,65 @@ section[aria-label="Assignment"] > p[role="alert"] {
   border-left: 4px solid var(--color-danger);
   color: var(--color-danger);
 }
+
+/* reports: date control, CSV link as a secondary button, numeric table */
+.reports-page .reports {
+  padding: var(--space-4);
+}
+
+.reports-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3) var(--space-4);
+  margin-bottom: var(--space-4);
+}
+
+.reports-controls label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-weight: 500;
+}
+
+.reports-controls a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  text-decoration: none;
+  transition: border-color 150ms, color 150ms;
+}
+
+.reports-controls a:hover {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+.reports-page table {
+  min-width: 720px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.reports-page td:nth-child(n + 2),
+.reports-page th:nth-child(n + 2) {
+  text-align: right;
+}
+
+.reports-page main > p {
+  margin: var(--space-3) 0 0;
+}
+
+.reports-page main > p[role="alert"] {
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-danger-bg);
+  border-left: 4px solid var(--color-danger);
+  color: var(--color-danger);
+}
