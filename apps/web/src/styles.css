@@ -325,3 +325,86 @@ tbody tr:hover {
   min-height: 40px;
   margin-top: var(--space-2);
 }
+
+/* jobs: page, filter bar, state chips, assignment panel */
+.jobs-page {
+  overflow-x: auto;
+}
+
+.jobs-page form[aria-label="Filters"] {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-3) var(--space-4);
+  padding: var(--space-3) var(--space-4);
+}
+
+.jobs-page form[aria-label="Filters"] label {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  font-weight: 500;
+}
+
+.jobs-page table {
+  min-width: 960px;
+}
+
+.jobs-page p {
+  margin: var(--space-3) var(--space-4);
+}
+
+/* job state chips: the label is always shown; colour is a second signal (DC-9) */
+.state-chip {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.state-chip.state-created { background: #f1f5f9; color: #334155; }
+.state-chip.state-assigned { background: #e0f2fe; color: #075985; }
+.state-chip.state-accepted { background: #ede9fe; color: #5b21b6; }
+.state-chip.state-en_route { background: #fef3c7; color: #92400e; }
+.state-chip.state-picked_up { background: #ffedd5; color: #9a3412; }
+.state-chip.state-delivered { background: #dcfce7; color: #166534; }
+.state-chip.state-failed { background: #fee2e2; color: #991b1b; }
+.state-chip.state-cancelled { background: #e5e7eb; color: #374151; }
+
+/* assignment panel: a card beside the jobs table */
+section[aria-label="Assignment"] {
+  margin: var(--space-4);
+  padding: var(--space-4);
+  max-width: 720px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-card);
+}
+
+section[aria-label="Assignment"] h2 {
+  margin: 0 0 var(--space-3);
+  font-size: var(--text-lg);
+}
+
+section[aria-label="Assignment"] td:nth-child(4),
+section[aria-label="Assignment"] th:nth-child(4) {
+  text-align: right;
+}
+
+section[aria-label="Assignment"] td input[type="radio"] {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--color-accent);
+}
+
+section[aria-label="Assignment"] > button {
+  margin-top: var(--space-3);
+}
+
+section[aria-label="Assignment"] > p[role="alert"] {
+  margin: var(--space-3) 0 0;
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-danger-bg);
+  border-left: 4px solid var(--color-danger);
+  color: var(--color-danger);
+}
