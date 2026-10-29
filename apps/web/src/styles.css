@@ -280,3 +280,48 @@ tbody tr:hover {
 .new-job-form {
   width: 340px;
 }
+
+/* login: centered card with a branded header */
+.login {
+  box-sizing: border-box;
+  max-width: 360px;
+  margin: 10vh auto 0;
+  padding: var(--space-5);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-card);
+}
+
+.login h1 {
+  margin: 0 0 var(--space-4);
+  font-size: var(--text-xl);
+  font-weight: 700;
+  color: var(--color-accent);
+  text-align: center;
+}
+
+.login form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.login label {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  font-weight: 500;
+}
+
+.login input {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 40px;
+}
+
+.login button[type="submit"] {
+  width: 100%;
+  min-height: 40px;
+  margin-top: var(--space-2);
+}
