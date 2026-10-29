@@ -73,7 +73,7 @@ export function TodayPage() {
           {rows.map((job) => (
             <li key={job.id}>
               <strong>Job {job.id}</strong>{' '}
-              <span>{STATE_LABELS[job.state] ?? job.state}</span>
+              <span className={`state-chip state-${job.state}`}>{STATE_LABELS[job.state] ?? job.state}</span>
               {job.window_start && (
                 <time dateTime={job.window_start}> {formatTime(job.window_start)}</time>
               )}{' '}

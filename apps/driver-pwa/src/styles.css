@@ -1,0 +1,357 @@
+/* tokens (GF-357) */
+:root {
+  --color-bg: #f8fafc;
+  --color-surface: #ffffff;
+  --color-border: #e2e8f0;
+  --color-border-strong: #cbd5e1;
+  --color-text: #0f172a;
+  --color-text-muted: #64748b;
+  --color-accent: #1d4ed8;
+  --color-accent-hover: #1e40af;
+  --color-danger: #b91c1c;
+  --color-danger-bg: #fef2f2;
+  --color-warning-bg: #fef3c7;
+  --color-warning-text: #92400e;
+  --color-disabled-bg: #e2e8f0;
+  --color-disabled-text: #94a3b8;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --text-sm: 0.875rem;
+  --text-md: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.5rem;
+  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --radius: 6px;
+  --shadow-card: 0 2px 8px rgb(15 23 42 / 0.12);
+}
+
+/* base: phone-first, 375–430px needs no media query */
+html,
+body,
+#root {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: var(--text-md);
+  line-height: 1.5;
+  color: var(--color-text);
+  background: var(--color-bg);
+}
+
+main {
+  box-sizing: border-box;
+  min-height: 100%;
+  padding:
+    calc(var(--space-4) + env(safe-area-inset-top))
+    calc(var(--space-4) + env(safe-area-inset-right))
+    calc(var(--space-4) + env(safe-area-inset-bottom))
+    calc(var(--space-4) + env(safe-area-inset-left));
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+h1 {
+  margin: 0;
+  font-size: var(--text-xl);
+  font-weight: 700;
+}
+
+h2 {
+  margin: 0;
+  font-size: var(--text-lg);
+  font-weight: 600;
+}
+
+a {
+  color: var(--color-accent);
+}
+
+/* header: sticky top row with the on-shift toggle and counts */
+main > header {
+  position: sticky;
+  top: env(safe-area-inset-top);
+  z-index: 5;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+}
+
+main > header > h1 {
+  flex: 1 1 100%;
+}
+
+main > header > label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 44px;
+  font-weight: 500;
+}
+
+main > header > a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  font-size: var(--text-sm);
+}
+
+main > header > p {
+  flex: 1 1 100%;
+  margin: 0;
+}
+
+main > header > p span {
+  display: inline-block;
+  margin-right: var(--space-2);
+  padding: 2px var(--space-2);
+  border: 1px solid var(--color-border-strong);
+  border-radius: 999px;
+  background: var(--color-bg);
+  font-size: var(--text-sm);
+  font-weight: 500;
+}
+
+input[type="checkbox"] {
+  width: 24px;
+  height: 24px;
+  margin: 0;
+  accent-color: var(--color-accent);
+}
+
+/* banners: status is an info tint, alert is a danger tint; each keeps its text (DC-9) */
+p[role="status"],
+p[role="alert"] {
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius);
+  font-size: var(--text-sm);
+}
+
+p[role="status"] {
+  background: #e0f2fe;
+  color: #075985;
+}
+
+p[role="alert"] {
+  background: var(--color-danger-bg);
+  border-left: 4px solid var(--color-danger);
+  color: var(--color-danger);
+}
+
+/* forms: stacked fields, 16px inputs (no iOS zoom), 44px targets */
+form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+form label {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  font-weight: 500;
+}
+
+input:not([type="checkbox"]):not([type="file"]),
+select,
+textarea {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 44px;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+  font-size: 16px;
+}
+
+/* the proof photo is a large file-picker button via its label (GF-361) */
+input[type="file"] {
+  width: 100%;
+  min-height: 44px;
+  font-size: var(--text-md);
+}
+
+input[type="file"]::file-selector-button {
+  min-height: 44px;
+  margin-right: var(--space-3);
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--color-accent);
+  border-radius: var(--radius);
+  background: var(--color-accent);
+  color: #ffffff;
+  font: inherit;
+  cursor: pointer;
+}
+
+button {
+  box-sizing: border-box;
+  min-width: 44px;
+  min-height: 44px;
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 150ms, border-color 150ms, color 150ms;
+}
+
+/* primary actions: full width at the bottom of their form or card */
+button[type="submit"] {
+  width: 100%;
+  border-color: var(--color-accent);
+  background: var(--color-accent);
+  color: #ffffff;
+}
+
+button[type="submit"]:hover {
+  border-color: var(--color-accent-hover);
+  background: var(--color-accent-hover);
+}
+
+button:disabled,
+button:disabled:hover {
+  border-color: var(--color-disabled-bg);
+  background: var(--color-disabled-bg);
+  color: var(--color-disabled-text);
+  cursor: not-allowed;
+}
+
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+/* job list: each job is a card; the state chip and the action sit inside it */
+main > ul {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+main > ul > li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-card);
+}
+
+main > ul > li > strong {
+  font-size: var(--text-md);
+}
+
+main > ul > li > time {
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+main > ul > li > button,
+main > ul > li > a {
+  flex: 1 1 100%;
+}
+
+main > ul > li > a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  min-height: 44px;
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--color-accent);
+  border-radius: var(--radius);
+  background: var(--color-accent);
+  color: #ffffff;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+/* job state chips: the label is always shown; colour is a second signal (DC-9) */
+.state-chip {
+  display: inline-block;
+  padding: 2px var(--space-2);
+  border-radius: 999px;
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+.state-chip.state-created { background: #f1f5f9; color: #334155; }
+.state-chip.state-assigned { background: #e0f2fe; color: #075985; }
+.state-chip.state-accepted { background: #ede9fe; color: #5b21b6; }
+.state-chip.state-en_route { background: #fef3c7; color: #92400e; }
+.state-chip.state-picked_up { background: #ffedd5; color: #9a3412; }
+.state-chip.state-delivered { background: #dcfce7; color: #166534; }
+.state-chip.state-failed { background: #fee2e2; color: #991b1b; }
+.state-chip.state-cancelled { background: #e5e7eb; color: #374151; }
+
+/* conflicts: a section of cards with a danger border */
+section[aria-label="Needs attention"] {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+section[aria-label="Needs attention"] ul {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+section[aria-label="Needs attention"] ul > li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-danger-bg);
+  border: 1px solid var(--color-danger);
+  border-left-width: 4px;
+  border-radius: var(--radius);
+}
+
+section[aria-label="Needs attention"] ul > li > button {
+  flex: 1 1 calc(50% - var(--space-2));
+}
+
+/* tablets: centre the column; phones keep full width */
+@media (min-width: 640px) {
+  main {
+    max-width: 32rem;
+    margin: 0 auto;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  button {
+    transition: none;
+  }
+}
