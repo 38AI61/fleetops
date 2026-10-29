@@ -134,7 +134,7 @@ export function ZonesPage() {
                   />
                 </label>
               )}
-              <button type="button" disabled={!feature || create.isPending} onClick={save}>
+              <button type="button" className="primary" disabled={!feature || create.isPending} onClick={save}>
                 Save zone
               </button>
               {create.isError && <p role="alert">{saveMessage(create.error)}</p>}

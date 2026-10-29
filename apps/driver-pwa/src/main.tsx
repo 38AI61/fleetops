@@ -6,6 +6,7 @@ import { App } from './App'
 import { queryClient } from './api/queryClient'
 import { bootSession } from './session/boot'
 import { QueueReplay } from './offline/QueueReplay'
+import './styles.css'
 
 // The refresh cookie restores the in-memory session before the guards decide.
 void bootSession()

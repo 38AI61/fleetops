@@ -79,7 +79,7 @@ export function JobsPage() {
             {jobs.data.map((j: Job) => (
               <tr key={j.id}>
                 <td>{j.id}</td>
-                <td>{j.state}</td>
+                <td className={`state-chip state-${j.state}`}>{j.state}</td>
                 <td>{j.driver_id ?? '—'}</td>
                 <td>{j.vehicle_id ?? '—'}</td>
                 <td>{windowText(j.window_start)}</td>
