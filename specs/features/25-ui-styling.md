@@ -297,3 +297,63 @@ Test flakiness policy (P23 precedent): an isolated re-run of the affected suite 
 - Merge and push (GF-363). `e2e/**` changes.
 - Light or dark theme, dispatcher mobile layout, animations beyond the 150ms color transition, and any content beyond the brief.
 - Driver `theme-color` meta and PWA icons (unchanged).
+
+## Validation results and deviations
+
+Run on 2026-10-29 on `phase-25-ui-styling`, host Node from the repo's `npm` scripts. Logs for each check are in `deploy/.local/p25-validation/` (gitignored). The G0 baseline ran before any change; the final run ran after the last code commit (`db825dd`).
+
+### Check results
+
+1. **G0 baseline (before any change).** `npm --prefix apps/web test`: exit 0 (18 files, 94 tests). `typecheck`: exit 0. `build`: exit 0. Driver `test`: exit 0 (19 files, 129 tests). Driver `typecheck`: exit 0. Driver `build`: exit 0, last line `check-pwa-build: ok`. Baseline CSS: web `index-yPgmLzVN.css` **1258 B**, `display-B2k4QVOw.css` **69808 B**, driver none (`ls dist/assets/*.css` matched 0 files).
+2. **(a)** Web suite: `npm --prefix apps/web test` exit 0, 18 files, 94 tests. `git diff --quiet main...HEAD -- 'apps/web/**/*.test.ts' 'apps/web/**/*.test.tsx'`: exit 0 (no test file changed). The test count is 18 files, not the 31 this spec's Testing depth section states. See D1.
+3. **(b)** Driver suite: `npm --prefix apps/driver-pwa test` exit 0, 19 files, 129 tests. The same `git diff --quiet` check for the driver tests: exit 0. The count is 19 files, not 29. See D1.
+4. **(c)** `npm --prefix apps/web run typecheck` exit 0. `npm --prefix apps/driver-pwa run typecheck` exit 0.
+5. **(d)** `npm --prefix apps/web run build` exit 0. `npm --prefix apps/driver-pwa run build` exit 0, last line `check-pwa-build: ok`.
+6. **(e) Built CSS, web.** `grep -o` on `dist/assets/index-DFChPy_F.css` finds `.login`, `.jobs-page`, `.new-job-page`, `.reports-page`, `.alert-bell`, `.alert-dropdown`, `.alert-severity`, `.zones-page`, `:focus-visible`, `:disabled`, plus `.topbar`, `.vehicle-card` (G0 class-survival check) and `.state-chip`. Each matched.
+   **Built CSS, driver.** `dist/assets/index-W-_P_XWO.css` exists and contains `.state-chip`, `env(safe-area-inset`, and `44px`. **Precache:** `dist/sw.js` lists `assets/index-W-_P_XWO.css` (grep match in `sw.js`).
+7. **(f) Scope fence.** `git diff --name-only main...HEAD | grep -Ev '<fence>'`: empty. The changed paths are `apps/driver-pwa/{index.html,src/main.tsx,src/pages/TodayPage.tsx,src/styles.css}`, `apps/web/src/{styles.css,jobs/JobsPage.tsx,jobs/AssignmentPanel.tsx,geofences/ZonesPage.tsx}`, and `specs/features/25-ui-styling.md`.
+8. **(g) Forbidden paths.** `git diff --quiet main...HEAD -- README.md CLAUDE.md db internal services cmd deploy .github e2e specs/constitution apps/web/package.json apps/web/package-lock.json apps/driver-pwa/package.json apps/driver-pwa/package-lock.json apps/driver-pwa/scripts apps/web/functions apps/driver-pwa/functions`: exit 0. No dependency change, no lockfile change, no `MapView.tsx` change.
+9. **(h) Behavior fence.** The added (`+`) `.tsx` lines that do not contain `className`, over `apps/*/src/*.tsx` and `apps/*/src/**/*.tsx`, are exactly one line: `+import './styles.css'` (driver `main.tsx`). The literal command also prints the `-` lines of the three replaced elements (below, check (i)); this is expected. The glob `apps/*/src/**/*.tsx` does not match files directly under `src/`, so the check was widened to include `apps/*/src/*.tsx`. See D4.
+10. **(i) Tag and structure fence.** Removed (`-`) `.tsx` lines are three, each replaced by a line that adds a `className`: `<span>{STATE_LABELS…}</span>` (TodayPage), `<button … onClick={save}>` (ZonesPage Save zone), `<td>{j.state}</td>` (JobsPage). Nothing else was removed. Tag names, text, `aria-*`, `role`, handlers and props are unchanged. The one `AssignmentPanel` change is `+className="primary"` on the Assign button, which adds a line and removes none.
+11. **(j) Secrets and dependencies.** `git diff main...HEAD | grep -E 'postgres(ql)?://|neon\.tech|BEGIN [A-Z ]*PRIVATE KEY|(JWT_SECRET|DEVICE_KEY_SALT|MINIO_SECRET|MINIO_KEY|SEED_PASSWORD)='`: empty.
+12. **(k) Byte accounting.**
+
+    | Asset | Before | After |
+    |---|---|---|
+    | web `index-*.css` | 1258 B (`index-yPgmLzVN`) | 13388 B (`index-DFChPy_F`) |
+    | web `display-*.css` (MapLibre) | 69808 B | **69808 B** (byte-identical count; hash `display-B2k4QVOw` unchanged) |
+    | driver `index-*.css` | none | 6132 B (`index-W-_P_XWO`) |
+
+13. **(l) CLAUDE.md.** `wc -l CLAUDE.md`: **197**. Unchanged.
+
+### Deviations
+
+- **D1 (spec count).** Testing depth and check (a)/(b) say 31 web and 29 driver test files. The repo has 18 web and 19 driver `*.test.ts(x)` files (`find ... -name "*.test.ts*" | wc -l`). The counts were wrong in the spec. The check that matters is the unchanged-test `git diff --quiet`, which passes. No test was edited.
+- **D2 (no active-nav highlight).** The topbar links are plain `Link`s with no `aria-current` and no `NavLink`. An active-item style would need a new attribute or a wrapper, both forbidden by GF-359. The topbar links use the accent colour only.
+- **D3 (no pick-map hint on the new-job page).** The Plan asks for a `.hint` under the map. `NewJobPage` has no element there, and adding a `<p className="hint">` adds an element (GF-359). Not added. The clear buttons, form layout and map split are styled.
+- **D4 (diff glob).** Check (h) as written with `apps/*/src/**/*.tsx` does not match `apps/driver-pwa/src/main.tsx` (root of `src/`). The fence was rerun with `apps/*/src/*.tsx` as well. Result: the only non-className added line is the import. Recorded so the next run does not miss the file.
+- **D5 (no location readout on the deliver page).** The Plan asks for "the location readout" styling. `DeliverPage.tsx` gets the position (`geolocation`, `lat`/`lng`) and shows only its error notice. It renders no readout element, so no readout class exists. Not added, same reason as D3.
+- **D6 (state cell is a `td`).** The web state element is `<td>{j.state}</td>` (no span exists). GF-359 item 2 allows a class on the web state element, so `className` went on the `td`. The chip is therefore a coloured cell, not a pill. The label stays visible (DC-9).
+- **D7 (`.primary` class).** The Plan says primary buttons use the accent. The base `button[type=submit]` rule covers the forms. Two non-submit buttons, Save zone (`ZonesPage`) and Assign (`AssignmentPanel`), got `className="primary"` (GF-359 item 1, a new name). This is the only markup addition beyond the Plan's list.
+- **D8 (extra rules not in the Plan).** Driver: `button` `transition: none` under `prefers-reduced-motion: reduce` (DC-8 keeps motion to 150ms; this removes it when the user opts out). Web: the `:has(> .alert-acked)` muted-row rule uses `:has()`, which needs a current browser. Chip, row-hover and alert-severity hex values are literals from GF-357 (row hover `#f1f5f9` is slate-100, not a token). Recorded, not changed.
+- **D9 (topbar wrap).** `.topbar { flex-wrap: wrap }` is in the base rules, not the `max-width: 1023px` block, so it wraps at every width. This meets the "wraps below 1024px" requirement and does not change the desktop layout at 1280px.
+- **D10 (commit grouping).** The login (G2) and jobs (G3) CSS were both written into `styles.css` before committing. They were split into two commits (`1f38228`, `03ac25b`) by writing the G2-only file state, so each group has its own commit. The G6 `!important` fix was amended into `8ad0f6e` before the branch was shared.
+- **D11 (untracked files).** `prompts/46-p25-plan.md`, `prompts/47-p25-persist.md` and `prompts/48-p25-implement.md` were untracked when the session started. They are the user's and were left untouched. The tree is clean apart from them. Scope check (f) allows `prompts/`.
+- **D12 (not run).** Visual check and the manual orchestrator step (GF-362 note): not run. No visual-regression tooling (D-38). Rule presence is proven by grep, not appearance.
+
+### Commits on `phase-25-ui-styling`
+
+```
+b48b4fb Add P25 feature spec                       (pre-existing)
+c932fcb Style web tokens and shared elements        (G1)
+1f38228 Style login page                            (G2)
+03ac25b Style jobs page, state chips and assignment panel   (G3)
+954cda2 Style new job page form and map split       (G4)
+97370b1 Style reports page controls and table       (G5)
+8ad0f6e Style alert bell badge, dropdown and severity chips (G6)
+8a3712e Style zones page panels and zone list       (G7)
+9ca9df1 Style assign button and dispatcher layout below 1024px (G7/G8 web)
+db825dd Style driver PWA mobile layout and import stylesheet   (G8)
+```
+
+Merge, push and Pages deployment are not done here (GF-363). This record is committed by the child.
